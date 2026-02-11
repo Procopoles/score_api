@@ -1,0 +1,14 @@
+geo-analysis-api/
+├── api/
+│   └── index.py          ← Entrypoint Vercel (expõe "app")
+├── lib/
+│   ├── __init__.py
+│   ├── models.py
+│   ├── geo_service.py
+│   └── areas_repository.py
+├── areas/
+│   └── areas.json         ← Dados das áreas (persiste no repo)
+├── requirements.txt
+├── vercel.json
+├── .python-version
+└── README.md
