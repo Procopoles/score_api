@@ -1,6 +1,6 @@
 ﻿from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class PointInput(BaseModel):
@@ -136,6 +136,26 @@ class AreaInput(BaseModel):
             ]
         }
     }
+
+
+class AreaPatchInput(BaseModel):
+    name: Optional[str] = Field(default=None, description="Novo nome da area")
+    slug: Optional[str] = Field(
+        default=None,
+        description="Novo identificador unico",
+        pattern=r"^[a-z0-9_]+$",
+    )
+    polygons: Optional[list[PolygonInput]] = Field(
+        default=None,
+        min_length=1,
+        description="Novo conjunto de polygons GeoJSON",
+    )
+
+    @model_validator(mode="after")
+    def validate_at_least_one_field(self):
+        if self.name is None and self.slug is None and self.polygons is None:
+            raise ValueError("Informe ao menos um campo para atualizar: name, slug ou polygons.")
+        return self
 
 
 class AreaSummary(BaseModel):

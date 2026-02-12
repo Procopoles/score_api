@@ -87,6 +87,28 @@ class AreasRepository:
         self._geometries[area.slug] = self._build_geometry(area_dict["polygons"])
         self._save()
 
+    def patch(self, slug: str, changes: dict) -> Optional[dict]:
+        current = self._areas_data.get(slug)
+        if current is None:
+            return None
+
+        new_slug = changes.get("slug", slug)
+        updated = {
+            "name": changes.get("name", current["name"]),
+            "slug": new_slug,
+            "polygons": changes.get("polygons", current["polygons"]),
+        }
+
+        self._areas_data[new_slug] = updated
+        self._geometries[new_slug] = self._build_geometry(updated["polygons"])
+
+        if new_slug != slug:
+            del self._areas_data[slug]
+            del self._geometries[slug]
+
+        self._save()
+        return updated
+
     def delete(self, slug: str) -> bool:
         if slug not in self._areas_data:
             return False
