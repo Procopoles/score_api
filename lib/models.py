@@ -1,10 +1,7 @@
-from pydantic import BaseModel, Field
-from typing import Optional
+﻿from typing import Literal, Optional
 
+from pydantic import BaseModel, Field, field_validator
 
-# ──────────────────────────────────────────────
-# REQUEST
-# ──────────────────────────────────────────────
 
 class PointInput(BaseModel):
     lat: float = Field(..., description="Latitude do ponto alvo", ge=-90, le=90)
@@ -15,7 +12,7 @@ class AnalysisRequest(BaseModel):
     target: PointInput
     areas: list[str] = Field(
         ...,
-        description="Slugs das áreas a analisar",
+        description="Slugs das areas a analisar",
         min_length=1,
     )
 
@@ -31,15 +28,11 @@ class AnalysisRequest(BaseModel):
     }
 
 
-# ──────────────────────────────────────────────
-# RESPONSE
-# ──────────────────────────────────────────────
-
 class AreaResult(BaseModel):
-    is_in: bool = Field(..., description="Ponto está dentro da área?")
+    is_in: bool = Field(..., description="Ponto esta dentro da area?")
     nearest_border_distance_meters: float = Field(
         ...,
-        description="Distância em metros até a borda mais próxima (0 se dentro)",
+        description="Distancia em metros ate a borda mais proxima (0 se dentro)",
     )
 
 
@@ -68,26 +61,53 @@ class AnalysisResponse(BaseModel):
     }
 
 
-# ──────────────────────────────────────────────
-# CRUD DE ÁREAS
-# ──────────────────────────────────────────────
-
 class PolygonInput(BaseModel):
     """
-    Lista de pontos [lat, lng] formando um polígono.
-    Não precisa repetir o primeiro ponto no final.
+    GeoJSON Polygon:
+    - type = "Polygon"
+    - coordinates = [ [ [lng, lat, alt?], ... ] , ... ]
     """
-    points: list[list[float]] = Field(..., min_length=3)
+
+    type: Literal["Polygon"] = "Polygon"
+    coordinates: list[list[list[float]]] = Field(
+        ...,
+        min_length=1,
+        description="Aneis GeoJSON no formato [lng, lat, alt?]. O primeiro anel e o externo.",
+    )
+
+    @field_validator("coordinates")
+    @classmethod
+    def validate_coordinates(
+        cls,
+        coordinates: list[list[list[float]]],
+    ) -> list[list[list[float]]]:
+        for ring in coordinates:
+            if len(ring) < 4:
+                raise ValueError("Cada anel do Polygon deve ter ao menos 4 posicoes.")
+
+            for position in ring:
+                if len(position) < 2:
+                    raise ValueError("Cada posicao deve conter ao menos [lng, lat].")
+
+                lng = position[0]
+                lat = position[1]
+                if not (-180 <= lng <= 180):
+                    raise ValueError("Longitude fora do intervalo valido (-180 a 180).")
+                if not (-90 <= lat <= 90):
+                    raise ValueError("Latitude fora do intervalo valido (-90 a 90).")
+
+        return coordinates
 
 
 class AreaInput(BaseModel):
     """
-    Área geográfica. Aceita múltiplos polígonos (ilhas separadas).
+    Area geografica. Aceita multiplos polygons (ilhas separadas).
     """
-    name: str = Field(..., description="Nome legível (ex: 'Área Principal')")
+
+    name: str = Field(..., description="Nome legivel (ex: 'Area Principal')")
     slug: str = Field(
         ...,
-        description="Identificador único (ex: 'area_principal')",
+        description="Identificador unico (ex: 'area_principal')",
         pattern=r"^[a-z0-9_]+$",
     )
     polygons: list[PolygonInput] = Field(..., min_length=1)
@@ -96,15 +116,19 @@ class AreaInput(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "name": "Área Principal",
+                    "name": "Area Principal",
                     "slug": "area_principal",
                     "polygons": [
                         {
-                            "points": [
-                                [-23.550, -46.640],
-                                [-23.550, -46.620],
-                                [-23.560, -46.620],
-                                [-23.560, -46.640],
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [-46.640, -23.550, 0],
+                                    [-46.620, -23.550, 0],
+                                    [-46.620, -23.560, 0],
+                                    [-46.640, -23.560, 0],
+                                    [-46.640, -23.550, 0]
+                                ]
                             ]
                         }
                     ],
