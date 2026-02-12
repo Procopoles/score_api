@@ -10,11 +10,22 @@ class PointInput(BaseModel):
 
 class AnalysisRequest(BaseModel):
     target: PointInput
-    areas: list[str] = Field(
-        ...,
+    areas: Optional[list[str]] = Field(
+        default=None,
         description="Slugs das areas a analisar",
         min_length=1,
     )
+    agencias: Optional[list[str]] = Field(
+        default=None,
+        description="Nomes de agencias para buscar areas (case-insensitive)",
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def validate_target_filters(self):
+        if not self.areas and not self.agencias:
+            raise ValueError("Informe ao menos um filtro: areas ou agencias.")
+        return self
 
     model_config = {
         "json_schema_extra": {
@@ -22,6 +33,7 @@ class AnalysisRequest(BaseModel):
                 {
                     "target": {"lat": -23.555, "lng": -46.630},
                     "areas": ["area_principal", "area_completa"],
+                    "agencias": ["SH Perdizes"],
                 }
             ]
         }
@@ -34,6 +46,8 @@ class AreaResult(BaseModel):
         ...,
         description="Distancia em metros ate a borda mais proxima (0 se dentro)",
     )
+    agencia: str = Field(..., description="Nome da agencia da area")
+    relevancia: int = Field(..., description="Nivel de relevancia da area (1 a 10)")
 
 
 class AnalysisResponse(BaseModel):
@@ -48,10 +62,14 @@ class AnalysisResponse(BaseModel):
                         "area_principal": {
                             "is_in": False,
                             "nearest_border_distance_meters": 1028.43,
+                            "agencia": "SH Perdizes",
+                            "relevancia": 8,
                         },
                         "area_completa": {
                             "is_in": True,
                             "nearest_border_distance_meters": 0,
+                            "agencia": "SH Jardins",
+                            "relevancia": 9,
                         },
                     },
                     "errors": None,

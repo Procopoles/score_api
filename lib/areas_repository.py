@@ -125,6 +125,14 @@ class AreasRepository:
     def get_raw(self, slug: str) -> Optional[dict]:
         return self._areas_data.get(slug)
 
+    def find_slugs_by_agencias(self, agencias: list[str]) -> list[str]:
+        normalized = {agencia.strip().casefold() for agencia in agencias}
+        return [
+            slug
+            for slug, data in self._areas_data.items()
+            if str(data.get("agencia", "")).strip().casefold() in normalized
+        ]
+
     def list_all(self) -> list[dict]:
         return [
             {
