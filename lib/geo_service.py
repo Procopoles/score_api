@@ -40,7 +40,7 @@ def _nearest_border_distance_meters(
 
 def analyze(request: AnalysisRequest) -> AnalysisResponse:
     target = Point(request.target.lng, request.target.lat)
-    results: dict[str, AreaResult] = {}
+    results: list[AreaResult] = []
     errors: list[str] = []
     slugs_to_analyze: list[str] = []
 
@@ -75,12 +75,14 @@ def analyze(request: AnalysisRequest) -> AnalysisResponse:
                 2,
             )
 
-        results[slug] = AreaResult(
+        results.append(AreaResult(
+            slug=slug,
+            name=str(area_data.get("name", slug)),
             is_in=is_inside,
             nearest_border_distance_meters=distance_m,
             agencia=str(area_data.get("agencia", "")),
             relevancia=int(area_data.get("relevancia", 1)),
-        )
+        ))
 
     return AnalysisResponse(
         results=results,

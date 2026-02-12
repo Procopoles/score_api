@@ -41,6 +41,8 @@ class AnalysisRequest(BaseModel):
 
 
 class AreaResult(BaseModel):
+    slug: str = Field(..., description="Slug da area")
+    name: str = Field(..., description="Nome da area")
     is_in: bool = Field(..., description="Ponto esta dentro da area?")
     nearest_border_distance_meters: float = Field(
         ...,
@@ -51,27 +53,31 @@ class AreaResult(BaseModel):
 
 
 class AnalysisResponse(BaseModel):
-    results: dict[str, AreaResult]
+    results: list[AreaResult]
     errors: Optional[list[str]] = None
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
-                    "results": {
-                        "area_principal": {
+                    "results": [
+                        {
+                            "slug": "area_principal",
+                            "name": "Area Principal",
                             "is_in": False,
                             "nearest_border_distance_meters": 1028.43,
                             "agencia": "SH Perdizes",
                             "relevancia": 8,
                         },
-                        "area_completa": {
+                        {
+                            "slug": "area_completa",
+                            "name": "Area Completa",
                             "is_in": True,
                             "nearest_border_distance_meters": 0,
                             "agencia": "SH Jardins",
                             "relevancia": 9,
                         },
-                    },
+                    ],
                     "errors": None,
                 }
             ]
