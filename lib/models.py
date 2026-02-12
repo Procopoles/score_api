@@ -110,6 +110,8 @@ class AreaInput(BaseModel):
         description="Identificador unico (ex: 'area_principal')",
         pattern=r"^[a-z0-9_]+$",
     )
+    agencia: str = Field(..., description="Nome da agencia/unidade da imobiliaria (ex: SH Perdizes)")
+    relevancia: int = Field(..., description="Nivel de relevancia da area (1 a 10)", ge=1, le=10)
     polygons: list[PolygonInput] = Field(..., min_length=1)
 
     model_config = {
@@ -118,6 +120,8 @@ class AreaInput(BaseModel):
                 {
                     "name": "Area Principal",
                     "slug": "area_principal",
+                    "agencia": "SH Perdizes",
+                    "relevancia": 8,
                     "polygons": [
                         {
                             "type": "Polygon",
@@ -145,6 +149,16 @@ class AreaPatchInput(BaseModel):
         description="Novo identificador unico",
         pattern=r"^[a-z0-9_]+$",
     )
+    agencia: Optional[str] = Field(
+        default=None,
+        description="Novo nome da agencia/unidade da imobiliaria",
+    )
+    relevancia: Optional[int] = Field(
+        default=None,
+        description="Novo nivel de relevancia da area (1 a 10)",
+        ge=1,
+        le=10,
+    )
     polygons: Optional[list[PolygonInput]] = Field(
         default=None,
         min_length=1,
@@ -153,8 +167,16 @@ class AreaPatchInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_at_least_one_field(self):
-        if self.name is None and self.slug is None and self.polygons is None:
-            raise ValueError("Informe ao menos um campo para atualizar: name, slug ou polygons.")
+        if (
+            self.name is None
+            and self.slug is None
+            and self.agencia is None
+            and self.relevancia is None
+            and self.polygons is None
+        ):
+            raise ValueError(
+                "Informe ao menos um campo para atualizar: name, slug, agencia, relevancia ou polygons."
+            )
         return self
 
 

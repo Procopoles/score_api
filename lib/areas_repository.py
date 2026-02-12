@@ -96,6 +96,8 @@ class AreasRepository:
         updated = {
             "name": changes.get("name", current["name"]),
             "slug": new_slug,
+            "agencia": changes.get("agencia", current.get("agencia", "")),
+            "relevancia": changes.get("relevancia", current.get("relevancia", 1)),
             "polygons": changes.get("polygons", current["polygons"]),
         }
 
