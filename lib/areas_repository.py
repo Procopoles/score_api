@@ -30,7 +30,8 @@ class AreasRepository:
         path = Path(AREAS_FILE)
         if not path.exists():
             return
-        with open(path, "r", encoding="utf-8") as f:
+        # Accept files with or without UTF-8 BOM (common when edited on Windows)
+        with open(path, "r", encoding="utf-8-sig") as f:
             raw: dict = json.load(f)
         for slug, area_dict in raw.items():
             self._areas_data[slug] = area_dict
