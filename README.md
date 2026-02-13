@@ -1,7 +1,7 @@
 # Geo Analysis API
 
-API REST para verificar se um ponto geográfico está dentro de áreas
-poligonais e calcular a distância até a borda mais próxima.
+API REST para verificar se um ponto geografico esta dentro de areas poligonais
+e calcular a distancia ate a borda mais proxima.
 
 ## Deploy na Vercel
 
@@ -13,7 +13,16 @@ npm i -g vercel
 vercel
 ```
 
-Pronto. Sem configuração extra.
+## Variaveis de Ambiente (Vercel)
+
+Configure estas variaveis no projeto:
+
+- `MINIO_ENDPOINT=https://minioconsole.shprimenegocios.com.br`
+- `MINIO_BUCKET=assets`
+- `MINIO_OBJECT_KEY=areas/areas.json`
+- `MINIO_ACCESS_KEY=<sua-chave>`
+- `MINIO_SECRET_KEY=<seu-segredo>`
+- `MINIO_REGION=us-east-1` (opcional)
 
 ## Dev Local
 
@@ -24,50 +33,53 @@ pip install uvicorn
 uvicorn api.index:app --reload
 ```
 
-Docs: http://localhost:8000/docs
+Docs: `http://localhost:8000/docs`
 
 ## Endpoints
 
-### `POST /api/v1/analyze`
+- `POST /api/v1/analyze`
+- `GET /api/v1/areas`
+- `GET /api/v1/areas/{slug}`
+- `POST /api/v1/areas`
+- `PATCH /api/v1/areas/{slug}`
+- `DELETE /api/v1/areas/{slug}`
 
-Verifica se o ponto está nas áreas solicitadas.
+## Exemplo de Analyze
+
+Request:
 
 ```json
 {
   "target": { "lat": -23.555, "lng": -46.630 },
-  "areas": ["area_principal", "area_completa"]
+  "areas": ["area_principal"],
+  "agencias": ["SH Perdizes"]
 }
 ```
 
-**Resposta:**
+Response:
 
 ```json
 {
-  "results": {
-    "area_principal": {
+  "results": [
+    {
+      "slug": "area_principal",
+      "name": "Area Principal",
       "is_in": true,
-      "nearest_border_distance_meters": 0
-    },
-    "area_completa": {
-      "is_in": true,
-      "nearest_border_distance_meters": 0
+      "nearest_border_distance_meters": 0,
+      "agencia": "SH Perdizes",
+      "relevancia": 8
     }
-  },
+  ],
   "errors": null
 }
 ```
 
-### `GET /api/v1/areas` — Lista áreas
-### `GET /api/v1/areas/{slug}` — Detalhes da área
-### `POST /api/v1/areas` — Criar/atualizar área
-### `DELETE /api/v1/areas/{slug}` — Remover área
+## Persistencia
 
-## Persistência
+As areas sao lidas/escritas no MinIO (objeto configurado por `MINIO_OBJECT_KEY`).
 
-As áreas são lidas de `areas/areas.json` (commitado no repo).
-Na Vercel, o filesystem é read-only em runtime.
+O arquivo e carregado uma vez por instancia (cache em memoria) e reutilizado entre
+requests. Se o cache estiver vazio, a API tenta recarregar do MinIO.
 
-Para CRUD dinâmico em produção, substitua o repository por:
-- Vercel KV / Vercel Postgres
-- Supabase (Postgres + PostGIS)
-- PlanetScale / Neon
+Operacoes de escrita (`POST`, `PATCH`, `DELETE`) atualizam o cache e enviam o JSON
+atualizado para o MinIO.
