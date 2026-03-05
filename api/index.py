@@ -292,6 +292,9 @@ FRONTEND_HTML = """
     }
 
     function polygonsToLeafletLatLngs(polygons) {
+      if (!Array.isArray(polygons)) {
+        throw new Error("Formato invalido para polygons: esperado array.");
+      }
       return polygons.map((polygon) => {
         const rings = polygon.coordinates || [];
         return rings.map((ring) => ring.map((coord) => [coord[1], coord[0]]));
@@ -300,6 +303,24 @@ FRONTEND_HTML = """
 
     function normalizePolygonsInput(rawInput) {
       if (Array.isArray(rawInput)) return rawInput;
+
+      if (rawInput && Array.isArray(rawInput.polygons)) {
+        return rawInput.polygons;
+      }
+
+      if (rawInput && rawInput.type === "Polygon" && Array.isArray(rawInput.coordinates)) {
+        return [{
+          type: "Polygon",
+          coordinates: rawInput.coordinates,
+        }];
+      }
+
+      if (rawInput && rawInput.type === "MultiPolygon" && Array.isArray(rawInput.coordinates)) {
+        return rawInput.coordinates.map((coordinates) => ({
+          type: "Polygon",
+          coordinates,
+        }));
+      }
 
       if (rawInput && rawInput.type === "Feature") {
         return normalizePolygonsInput({
@@ -342,6 +363,30 @@ FRONTEND_HTML = """
       throw new Error("Formato invalido. Use JSON array de polygons ou FeatureCollection GeoJSON.");
     }
 
+    function validatePolygonsForApi(polygons) {
+      if (!Array.isArray(polygons) || !polygons.length) {
+        throw new Error("Informe ao menos um Polygon valido.");
+      }
+
+      polygons.forEach((polygon, polyIndex) => {
+        if (!polygon || polygon.type !== "Polygon" || !Array.isArray(polygon.coordinates)) {
+          throw new Error(`Polygon ${polyIndex + 1} invalido.`);
+        }
+
+        if (!polygon.coordinates.length) {
+          throw new Error(`Polygon ${polyIndex + 1} sem aneis.`);
+        }
+
+        polygon.coordinates.forEach((ring, ringIndex) => {
+          if (!Array.isArray(ring) || ring.length < 4) {
+            throw new Error(
+              `Polygon ${polyIndex + 1}, anel ${ringIndex + 1} precisa de ao menos 4 pontos.`
+            );
+          }
+        });
+      });
+    }
+
     function parsePolygonsFromInput(isPreview = false) {
       let parsed;
       try {
@@ -349,7 +394,26 @@ FRONTEND_HTML = """
       } catch (error) {
         throw new Error(isPreview ? "JSON invalido para preview." : "JSON de polygons invalido.");
       }
-      return normalizePolygonsInput(parsed);
+      const polygons = normalizePolygonsInput(parsed);
+      validatePolygonsForApi(polygons);
+      return polygons;
+    }
+
+    function extractApiErrorMessage(err) {
+      if (!err || !err.detail) return "Falha ao salvar area.";
+      if (typeof err.detail === "string") return err.detail;
+      if (Array.isArray(err.detail)) {
+        return err.detail
+          .map((item) => {
+            if (!item) return "";
+            const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
+            const msg = item.msg || "";
+            return loc ? `${loc}: ${msg}` : msg;
+          })
+          .filter(Boolean)
+          .join(" | ");
+      }
+      return "Falha ao salvar area.";
     }
 
     function removePreviewLayer() {
@@ -374,7 +438,12 @@ FRONTEND_HTML = """
 
     function drawAreaOnMap(area) {
       const color = colorFromSlug(area.slug);
-      const latLngPolygons = polygonsToLeafletLatLngs(area.polygons || []);
+      let latLngPolygons;
+      try {
+        latLngPolygons = polygonsToLeafletLatLngs(area.polygons || []);
+      } catch (error) {
+        return;
+      }
       const layers = latLngPolygons.map((latLngRings) =>
         L.polygon(latLngRings, {
           color,
@@ -516,13 +585,14 @@ FRONTEND_HTML = """
     function previewPolygons() {
       removePreviewLayer();
       let polygonsParsed;
+      let latLngPolygons;
       try {
         polygonsParsed = parsePolygonsFromInput(true);
+        latLngPolygons = polygonsToLeafletLatLngs(polygonsParsed);
       } catch (error) {
         setStatus(error.message || "Falha no preview dos polygons.", true);
         return;
       }
-      const latLngPolygons = polygonsToLeafletLatLngs(polygonsParsed);
       const layers = latLngPolygons.map((latLngRings) =>
         L.polygon(latLngRings, {
           color: "#111827",
@@ -579,7 +649,7 @@ FRONTEND_HTML = """
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setStatus(err.detail || "Falha ao salvar area.", true);
+        setStatus(extractApiErrorMessage(err), true);
         return;
       }
 
