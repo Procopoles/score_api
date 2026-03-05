@@ -225,7 +225,7 @@ FRONTEND_HTML = """
           </div>
           <div class="form-row full">
             <div>
-              <label for="polygons">Polygons (JSON array)</label>
+              <label for="polygons">Polygons (JSON array ou GeoJSON FeatureCollection)</label>
               <textarea id="polygons" required>[{"type":"Polygon","coordinates":[[[-46.64,-23.55],[-46.62,-23.55],[-46.62,-23.56],[-46.64,-23.56],[-46.64,-23.55]]]}]</textarea>
             </div>
           </div>
@@ -296,6 +296,60 @@ FRONTEND_HTML = """
         const rings = polygon.coordinates || [];
         return rings.map((ring) => ring.map((coord) => [coord[1], coord[0]]));
       });
+    }
+
+    function normalizePolygonsInput(rawInput) {
+      if (Array.isArray(rawInput)) return rawInput;
+
+      if (rawInput && rawInput.type === "Feature") {
+        return normalizePolygonsInput({
+          type: "FeatureCollection",
+          features: [rawInput],
+        });
+      }
+
+      if (rawInput && rawInput.type === "FeatureCollection" && Array.isArray(rawInput.features)) {
+        const polygons = [];
+
+        for (const feature of rawInput.features) {
+          const geometry = feature && feature.geometry;
+          if (!geometry || !geometry.type || !geometry.coordinates) continue;
+
+          if (geometry.type === "Polygon") {
+            polygons.push({
+              type: "Polygon",
+              coordinates: geometry.coordinates,
+            });
+          }
+
+          if (geometry.type === "MultiPolygon") {
+            for (const coordinates of geometry.coordinates) {
+              polygons.push({
+                type: "Polygon",
+                coordinates,
+              });
+            }
+          }
+        }
+
+        if (!polygons.length) {
+          throw new Error("GeoJSON sem geometrias do tipo Polygon/MultiPolygon.");
+        }
+
+        return polygons;
+      }
+
+      throw new Error("Formato invalido. Use JSON array de polygons ou FeatureCollection GeoJSON.");
+    }
+
+    function parsePolygonsFromInput(isPreview = false) {
+      let parsed;
+      try {
+        parsed = JSON.parse(els.polygons.value);
+      } catch (error) {
+        throw new Error(isPreview ? "JSON invalido para preview." : "JSON de polygons invalido.");
+      }
+      return normalizePolygonsInput(parsed);
     }
 
     function removePreviewLayer() {
@@ -463,9 +517,9 @@ FRONTEND_HTML = """
       removePreviewLayer();
       let polygonsParsed;
       try {
-        polygonsParsed = JSON.parse(els.polygons.value);
+        polygonsParsed = parsePolygonsFromInput(true);
       } catch (error) {
-        setStatus("JSON de polygons invalido para preview.", true);
+        setStatus(error.message || "Falha no preview dos polygons.", true);
         return;
       }
       const latLngPolygons = polygonsToLeafletLatLngs(polygonsParsed);
@@ -490,9 +544,9 @@ FRONTEND_HTML = """
 
       let polygonsParsed;
       try {
-        polygonsParsed = JSON.parse(els.polygons.value);
+        polygonsParsed = parsePolygonsFromInput(false);
       } catch (error) {
-        setStatus("JSON de polygons invalido.", true);
+        setStatus(error.message || "Falha ao ler polygons.", true);
         return;
       }
 
