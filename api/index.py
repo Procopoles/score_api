@@ -40,42 +40,62 @@ FRONTEND_HTML = """
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Score API - Areas</title>
+  <title>Score API - Areas no Mapa</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
   <style>
     :root {
-      --bg: #f4f6f8;
+      --bg: #f3f4f6;
       --panel: #ffffff;
-      --text: #1f2933;
-      --subtle: #52606d;
-      --border: #d9e2ec;
-      --primary: #0b7285;
-      --danger: #c92a2a;
-      --radius: 10px;
+      --text: #0f172a;
+      --subtle: #475569;
+      --border: #dbe3ed;
+      --primary: #006d77;
+      --danger: #b42318;
+      --radius: 12px;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Segoe UI", Tahoma, sans-serif;
       color: var(--text);
-      background: linear-gradient(180deg, #eef4f7 0%, var(--bg) 100%);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: radial-gradient(circle at 0 0, #ecf8ff 0, #f8fafc 45%, var(--bg) 100%);
     }
     .container {
-      max-width: 1100px;
+      max-width: 1300px;
       margin: 0 auto;
-      padding: 24px 16px 40px;
+      padding: 16px;
     }
-    h1, h2, h3 { margin: 0 0 12px; }
-    .grid {
-      display: grid;
-      gap: 16px;
-      grid-template-columns: 1.2fr 1fr;
-    }
+    h1, h2, h3 { margin: 0 0 10px; }
     .panel {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 16px;
-      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+      padding: 14px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+    }
+    .muted { color: var(--subtle); font-size: 13px; }
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    #map {
+      width: 100%;
+      height: 55vh;
+      min-height: 360px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 14px;
     }
     table {
       width: 100%;
@@ -91,17 +111,17 @@ FRONTEND_HTML = """
     th { color: var(--subtle); font-weight: 600; }
     .row-actions {
       display: flex;
-      gap: 8px;
       flex-wrap: wrap;
+      gap: 8px;
     }
     button {
       border: 0;
       border-radius: 8px;
       padding: 8px 10px;
       cursor: pointer;
+      background: #e8edf2;
       font-size: 13px;
-      background: #e8eff3;
-      color: #123;
+      color: #111827;
     }
     button.primary { background: var(--primary); color: #fff; }
     button.danger { background: var(--danger); color: #fff; }
@@ -112,7 +132,12 @@ FRONTEND_HTML = """
       margin-bottom: 10px;
     }
     .form-row.full { grid-template-columns: 1fr; }
-    label { font-size: 12px; color: var(--subtle); margin-bottom: 4px; display: block; }
+    label {
+      font-size: 12px;
+      color: var(--subtle);
+      margin-bottom: 4px;
+      display: block;
+    }
     input, textarea {
       width: 100%;
       border: 1px solid var(--border);
@@ -121,19 +146,27 @@ FRONTEND_HTML = """
       font-size: 14px;
       font-family: inherit;
     }
-    textarea { min-height: 140px; resize: vertical; }
-    .muted { color: var(--subtle); font-size: 13px; }
-    .status { margin-top: 8px; min-height: 18px; font-size: 13px; }
+    textarea {
+      min-height: 170px;
+      resize: vertical;
+    }
+    .status {
+      margin-top: 8px;
+      min-height: 18px;
+      font-size: 13px;
+    }
     pre {
       background: #0f172a;
       color: #dbeafe;
       border-radius: 8px;
       padding: 12px;
       overflow: auto;
-      max-height: 320px;
+      max-height: 240px;
       font-size: 12px;
+      margin: 8px 0 0;
     }
-    @media (max-width: 900px) {
+    @media (max-width: 980px) {
+      #map { height: 45vh; min-height: 320px; }
       .grid { grid-template-columns: 1fr; }
       .form-row { grid-template-columns: 1fr; }
     }
@@ -141,10 +174,16 @@ FRONTEND_HTML = """
 </head>
 <body>
   <div class="container">
-    <h1>Gestao de Areas</h1>
-    <p class="muted">CRUD simplificado de areas e visualizacao dos polygons em JSON.</p>
-    <div class="grid">
-      <section class="panel">
+    <section class="hero">
+      <div class="panel">
+        <h1>Gestao de Areas</h1>
+        <p class="muted">Visualizacao estilo mapa e CRUD simplificado.</p>
+        <div id="map"></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
         <h2>Areas cadastradas</h2>
         <div class="muted" id="list-meta">Carregando...</div>
         <table>
@@ -159,9 +198,9 @@ FRONTEND_HTML = """
           </thead>
           <tbody id="areas-body"></tbody>
         </table>
-      </section>
+      </div>
 
-      <section class="panel">
+      <div class="panel">
         <h2 id="form-title">Nova area</h2>
         <form id="area-form">
           <div class="form-row">
@@ -191,23 +230,38 @@ FRONTEND_HTML = """
             </div>
           </div>
           <div class="row-actions">
-            <button class="primary" type="submit" id="save-btn">Salvar</button>
+            <button class="primary" type="submit">Salvar</button>
+            <button type="button" id="preview-btn">Preview no mapa</button>
             <button type="button" id="reset-btn">Limpar</button>
           </div>
         </form>
         <div class="status" id="status"></div>
-      </section>
-    </div>
 
-    <section class="panel" style="margin-top:16px;">
-      <h3>Visualizacao da area selecionada</h3>
-      <pre id="area-json">Selecione uma area para visualizar os polygons.</pre>
+        <h3 style="margin-top:14px;">Area selecionada (JSON)</h3>
+        <pre id="area-json">Selecione uma area para visualizar os polygons.</pre>
+      </div>
     </section>
   </div>
 
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
   <script>
     const apiBase = "/api/v1/areas";
     let editingSlug = null;
+    let selectedSlug = null;
+    let previewLayer = null;
+
+    const map = L.map("map", { zoomControl: true }).setView([-23.55, -46.63], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const areaLayerGroup = L.featureGroup().addTo(map);
+    const areaLayersBySlug = new Map();
 
     const els = {
       body: document.getElementById("areas-body"),
@@ -221,12 +275,75 @@ FRONTEND_HTML = """
       polygons: document.getElementById("polygons"),
       status: document.getElementById("status"),
       areaJson: document.getElementById("area-json"),
+      previewBtn: document.getElementById("preview-btn"),
       resetBtn: document.getElementById("reset-btn"),
     };
 
     function setStatus(message, isError = false) {
       els.status.textContent = message;
       els.status.style.color = isError ? "#b42318" : "#12703d";
+    }
+
+    function colorFromSlug(slug) {
+      let hash = 0;
+      for (let i = 0; i < slug.length; i++) hash = slug.charCodeAt(i) + ((hash << 5) - hash);
+      const hue = Math.abs(hash) % 360;
+      return `hsl(${hue}, 72%, 42%)`;
+    }
+
+    function polygonsToLeafletLatLngs(polygons) {
+      return polygons.map((polygon) => {
+        const rings = polygon.coordinates || [];
+        return rings.map((ring) => ring.map((coord) => [coord[1], coord[0]]));
+      });
+    }
+
+    function removePreviewLayer() {
+      if (previewLayer) {
+        map.removeLayer(previewLayer);
+        previewLayer = null;
+      }
+    }
+
+    function highlightSelectedArea() {
+      areaLayersBySlug.forEach((entry, slug) => {
+        const baseColor = entry.color;
+        const isSelected = slug === selectedSlug;
+        entry.layer.setStyle({
+          color: baseColor,
+          weight: isSelected ? 4 : 2,
+          fillOpacity: isSelected ? 0.35 : 0.18,
+        });
+        if (isSelected) entry.layer.bringToFront();
+      });
+    }
+
+    function drawAreaOnMap(area) {
+      const color = colorFromSlug(area.slug);
+      const latLngPolygons = polygonsToLeafletLatLngs(area.polygons || []);
+      const layers = latLngPolygons.map((latLngRings) =>
+        L.polygon(latLngRings, {
+          color,
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 0.18,
+        })
+      );
+      const layer = L.featureGroup(layers);
+      layer.bindPopup(`<strong>${area.name}</strong><br/>${area.slug}`);
+      layer.on("click", () => {
+        selectedSlug = area.slug;
+        highlightSelectedArea();
+        viewArea(area.slug);
+      });
+      areaLayerGroup.addLayer(layer);
+      areaLayersBySlug.set(area.slug, { layer, color });
+    }
+
+    async function fitMapToAllAreas() {
+      if (!areaLayerGroup.getLayers().length) return;
+      const bounds = areaLayerGroup.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.12));
     }
 
     function resetForm() {
@@ -236,21 +353,32 @@ FRONTEND_HTML = """
       els.relevancia.value = 1;
       els.polygons.value = '[{"type":"Polygon","coordinates":[[[-46.64,-23.55],[-46.62,-23.55],[-46.62,-23.56],[-46.64,-23.56],[-46.64,-23.55]]]}]';
       els.areaJson.textContent = "Selecione uma area para visualizar os polygons.";
+      selectedSlug = null;
+      highlightSelectedArea();
+      removePreviewLayer();
       setStatus("");
+    }
+
+    async function getAreaDetails(slug) {
+      const res = await fetch(`${apiBase}/${slug}`);
+      if (!res.ok) throw new Error(`Falha ao carregar area ${slug}.`);
+      return res.json();
     }
 
     async function loadAreas() {
       const res = await fetch(apiBase);
       if (!res.ok) throw new Error("Falha ao carregar areas.");
-      const areas = await res.json();
-      els.listMeta.textContent = areas.length + " area(s)";
+      const summaries = await res.json();
+      els.listMeta.textContent = summaries.length + " area(s)";
 
-      if (!areas.length) {
+      if (!summaries.length) {
         els.body.innerHTML = '<tr><td colspan="5" class="muted">Nenhuma area cadastrada.</td></tr>';
+        areaLayerGroup.clearLayers();
+        areaLayersBySlug.clear();
         return;
       }
 
-      els.body.innerHTML = areas.map(area => `
+      els.body.innerHTML = summaries.map((area) => `
         <tr>
           <td>${area.name}</td>
           <td><code>${area.slug}</code></td>
@@ -259,27 +387,50 @@ FRONTEND_HTML = """
           <td>
             <div class="row-actions">
               <button onclick="viewArea('${area.slug}')">Ver</button>
+              <button onclick="focusAreaOnMap('${area.slug}')">Mapa</button>
               <button onclick="editArea('${area.slug}')">Editar</button>
               <button class="danger" onclick="deleteArea('${area.slug}')">Excluir</button>
             </div>
           </td>
         </tr>
       `).join("");
+
+      areaLayerGroup.clearLayers();
+      areaLayersBySlug.clear();
+      const detailedAreas = await Promise.all(summaries.map((area) => getAreaDetails(area.slug)));
+      detailedAreas.forEach(drawAreaOnMap);
+      highlightSelectedArea();
+      await fitMapToAllAreas();
     }
 
     async function viewArea(slug) {
-      const res = await fetch(`${apiBase}/${slug}`);
-      const data = await res.json();
+      const data = await getAreaDetails(slug);
+      selectedSlug = slug;
       els.areaJson.textContent = JSON.stringify(data, null, 2);
+      highlightSelectedArea();
+      const layerEntry = areaLayersBySlug.get(slug);
+      if (layerEntry) {
+        const bounds = layerEntry.layer.getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+      }
+    }
+
+    function focusAreaOnMap(slug) {
+      selectedSlug = slug;
+      highlightSelectedArea();
+      const layerEntry = areaLayersBySlug.get(slug);
+      if (!layerEntry) return;
+      const bounds = layerEntry.layer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+      layerEntry.layer.openPopup();
     }
 
     async function editArea(slug) {
-      const res = await fetch(`${apiBase}/${slug}`);
-      if (!res.ok) {
+      const data = await getAreaDetails(slug).catch(() => null);
+      if (!data) {
         setStatus("Nao foi possivel carregar area para edicao.", true);
         return;
       }
-      const data = await res.json();
       editingSlug = slug;
       els.formTitle.textContent = `Editando: ${slug}`;
       els.name.value = data.name || "";
@@ -287,7 +438,9 @@ FRONTEND_HTML = """
       els.agencia.value = data.agencia || "";
       els.relevancia.value = data.relevancia || 1;
       els.polygons.value = JSON.stringify(data.polygons || [], null, 2);
+      selectedSlug = slug;
       els.areaJson.textContent = JSON.stringify(data, null, 2);
+      highlightSelectedArea();
       setStatus("Modo edicao ativado.");
     }
 
@@ -296,17 +449,44 @@ FRONTEND_HTML = """
       if (!ok) return;
       const res = await fetch(`${apiBase}/${slug}`, { method: "DELETE" });
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         setStatus(err.detail || "Erro ao excluir area.", true);
         return;
       }
       setStatus(`Area '${slug}' removida.`);
       if (editingSlug === slug) resetForm();
+      if (selectedSlug === slug) selectedSlug = null;
       await loadAreas();
+    }
+
+    function previewPolygons() {
+      removePreviewLayer();
+      let polygonsParsed;
+      try {
+        polygonsParsed = JSON.parse(els.polygons.value);
+      } catch (error) {
+        setStatus("JSON de polygons invalido para preview.", true);
+        return;
+      }
+      const latLngPolygons = polygonsToLeafletLatLngs(polygonsParsed);
+      const layers = latLngPolygons.map((latLngRings) =>
+        L.polygon(latLngRings, {
+          color: "#111827",
+          weight: 2,
+          fillColor: "#60a5fa",
+          fillOpacity: 0.2,
+          dashArray: "6 5",
+        })
+      );
+      previewLayer = L.featureGroup(layers).addTo(map);
+      const bounds = previewLayer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+      setStatus("Preview aplicado no mapa.");
     }
 
     async function saveArea(event) {
       event.preventDefault();
+      removePreviewLayer();
 
       let polygonsParsed;
       try {
@@ -324,12 +504,13 @@ FRONTEND_HTML = """
         polygons: polygonsParsed,
       };
 
-      const isEditingSameSlug = editingSlug && editingSlug === payload.slug;
-      const method = isEditingSameSlug ? "PATCH" : "POST";
-      const url = isEditingSameSlug ? `${apiBase}/${editingSlug}` : apiBase;
-      const body = isEditingSameSlug
+      const isEditing = !!editingSlug;
+      const method = isEditing ? "PATCH" : "POST";
+      const url = isEditing ? `${apiBase}/${editingSlug}` : apiBase;
+      const body = isEditing
         ? JSON.stringify({
             name: payload.name,
+            slug: payload.slug,
             agencia: payload.agencia,
             relevancia: payload.relevancia,
             polygons: payload.polygons,
@@ -348,13 +529,16 @@ FRONTEND_HTML = """
         return;
       }
 
-      setStatus(isEditingSameSlug ? "Area atualizada com sucesso." : "Area salva com sucesso.");
+      const targetSlug = payload.slug;
+      setStatus(isEditing ? "Area atualizada com sucesso." : "Area salva com sucesso.");
+      editingSlug = targetSlug;
+      selectedSlug = targetSlug;
       await loadAreas();
-      if (!isEditingSameSlug) resetForm();
-      await viewArea(payload.slug);
+      await viewArea(targetSlug);
     }
 
     els.form.addEventListener("submit", saveArea);
+    els.previewBtn.addEventListener("click", previewPolygons);
     els.resetBtn.addEventListener("click", resetForm);
 
     resetForm();
@@ -364,6 +548,7 @@ FRONTEND_HTML = """
     });
 
     window.viewArea = viewArea;
+    window.focusAreaOnMap = focusAreaOnMap;
     window.editArea = editArea;
     window.deleteArea = deleteArea;
   </script>
