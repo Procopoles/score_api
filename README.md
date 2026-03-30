@@ -41,6 +41,9 @@ Docs: `http://localhost:8000/docs`
 - `GET /api/v1/areas`
 - `GET /api/v1/areas/{slug}`
 - `POST /api/v1/areas`
+- `POST /api/v1/areas/automatic/preview`
+- `POST /api/v1/areas/automatic`
+- `POST /api/v1/areas/{slug}/refresh`
 - `PATCH /api/v1/areas/{slug}`
 - `DELETE /api/v1/areas/{slug}`
 
@@ -83,3 +86,11 @@ requests. Se o cache estiver vazio, a API tenta recarregar do MinIO.
 
 Operacoes de escrita (`POST`, `PATCH`, `DELETE`) atualizam o cache e enviam o JSON
 atualizado para o MinIO.
+
+## Modos da aplicacao
+
+- `Manual`: mesmo fluxo atual, com polygons em JSON/GeoJSON.
+- `Automatico`: upload de `KML`/`KMZ` para converter polygons automaticamente.
+- `Automatico` com `NetworkLink`: a API salva a URL remota extraida do arquivo e
+  tenta atualizar o mapa/polygons antes de listar, detalhar ou analisar uma area,
+  persistindo o ultimo estado valido no mesmo JSON do object store.

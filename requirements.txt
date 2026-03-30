@@ -1,3 +1,4 @@
 fastapi==0.115.6
 shapely==2.0.6
 boto3==1.35.91
+python-multipart==0.0.20

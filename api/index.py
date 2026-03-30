@@ -2,10 +2,13 @@
 Entrypoint Vercel - expoe a variavel `app` (FastAPI/ASGI).
 """
 
-from fastapi import FastAPI, HTTPException
+from typing import Optional
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from lib.frontend_html import FRONTEND_HTML as FRONTEND_HTML_V2
 from lib.models import (
     AnalysisRequest,
     AnalysisResponse,
@@ -15,6 +18,7 @@ from lib.models import (
 )
 from lib.geo_service import analyze
 from lib.areas_repository import repository
+from lib.kml_service import build_automatic_area_record, preview_automatic_source
 
 app = FastAPI(
     title="Geo Analysis API",
@@ -681,6 +685,24 @@ FRONTEND_HTML = """
 """
 
 
+FRONTEND_HTML = FRONTEND_HTML_V2
+
+
+def _normalize_source_kind(source_kind: str) -> str:
+    normalized = (source_kind or "").strip().lower()
+    if normalized not in {"kml_upload", "network_link"}:
+        raise HTTPException(400, "source_kind deve ser 'kml_upload' ou 'network_link'.")
+    return normalized
+
+
+async def _read_upload(file: UploadFile) -> tuple[bytes, str]:
+    file_name = (file.filename or "arquivo.kml").strip() or "arquivo.kml"
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "O arquivo enviado esta vazio.")
+    return content, file_name
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -726,12 +748,94 @@ def get_area(slug: str):
 @app.post(
     "/api/v1/areas",
     status_code=201,
-    summary="Cria ou atualiza uma area",
+    summary="Cria ou atualiza uma area manual",
     tags=["Areas"],
 )
 def upsert_area(area: AreaInput):
     repository.upsert(area)
     return {"message": f"Area '{area.slug}' salva com sucesso."}
+
+
+@app.post(
+    "/api/v1/areas/automatic/preview",
+    summary="Interpreta um arquivo KML/KMZ para preview no modo automatico",
+    tags=["Areas"],
+)
+async def preview_automatic_area(
+    source_kind: str = Form(...),
+    refresh_interval_seconds: Optional[int] = Form(default=None),
+    file: UploadFile = File(...),
+):
+    normalized_source_kind = _normalize_source_kind(source_kind)
+    file_bytes, file_name = await _read_upload(file)
+
+    try:
+        preview = preview_automatic_source(
+            source_kind=normalized_source_kind,
+            file_bytes=file_bytes,
+            file_name=file_name,
+            refresh_interval_seconds=refresh_interval_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    return {
+        "document_name": preview.get("document_name"),
+        "polygons": preview["polygons"],
+        "polygon_count": len(preview["polygons"]),
+        "automatic_source": preview["automatic_source"],
+    }
+
+
+@app.post(
+    "/api/v1/areas/automatic",
+    status_code=201,
+    summary="Cria ou atualiza uma area automatica a partir de um KML/KMZ",
+    tags=["Areas"],
+)
+async def save_automatic_area(
+    name: str = Form(...),
+    slug: str = Form(...),
+    agencia: str = Form(...),
+    relevancia: int = Form(...),
+    source_kind: str = Form(...),
+    refresh_interval_seconds: Optional[int] = Form(default=None),
+    editing_slug: Optional[str] = Form(default=None),
+    file: UploadFile = File(...),
+):
+    normalized_source_kind = _normalize_source_kind(source_kind)
+    file_bytes, file_name = await _read_upload(file)
+
+    if editing_slug and not repository.exists(editing_slug):
+        raise HTTPException(404, f"Area '{editing_slug}' nao encontrada.")
+
+    if editing_slug and editing_slug != slug and repository.exists(slug):
+        raise HTTPException(409, f"Area '{slug}' ja existe.")
+
+    try:
+        area_record = build_automatic_area_record(
+            source_kind=normalized_source_kind,
+            file_bytes=file_bytes,
+            file_name=file_name,
+            refresh_interval_seconds=refresh_interval_seconds,
+            name=name,
+            slug=slug,
+            agencia=agencia,
+            relevancia=relevancia,
+        )
+        area = AreaInput.model_validate(area_record)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    repository.upsert(area)
+
+    if editing_slug and editing_slug != slug:
+        repository.delete(editing_slug)
+
+    return {
+        "message": f"Area automatica '{slug}' salva com sucesso.",
+        "area": repository.get_raw(slug),
+    }
 
 
 @app.patch(
@@ -756,6 +860,31 @@ def patch_area(slug: str, patch: AreaPatchInput):
     return {
         "message": f"Area '{slug}' atualizada com sucesso.",
         "area": updated,
+    }
+
+
+@app.post(
+    "/api/v1/areas/{slug}/refresh",
+    summary="Forca o refresh de uma area automatica",
+    tags=["Areas"],
+)
+def refresh_area(slug: str):
+    if not repository.exists(slug):
+        raise HTTPException(404, f"Area '{slug}' nao encontrada.")
+
+    current = repository.get_raw(slug)
+    if current is None:
+        raise HTTPException(404, f"Area '{slug}' nao encontrada.")
+
+    if current.get("mode") != "automatic":
+        raise HTTPException(400, "Apenas areas automaticas suportam refresh.")
+    if (current.get("automatic_source") or {}).get("type") != "network_link":
+        raise HTTPException(400, "Refresh manual so esta disponivel para areas com NetworkLink.")
+
+    refreshed = repository.refresh_area(slug, force=True)
+    return {
+        "message": f"Refresh executado para '{slug}'.",
+        "area": refreshed,
     }
 
 

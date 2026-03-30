@@ -1,5 +1,6 @@
 import json
 import os
+from copy import deepcopy
 from threading import RLock
 from typing import Optional
 
@@ -8,6 +9,7 @@ from botocore.exceptions import ClientError
 from shapely.geometry import MultiPolygon, Polygon
 
 from lib.models import AreaInput
+from lib.kml_service import maybe_refresh_automatic_area
 
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "https://minioconsole.shprimenegocios.com.br")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "assets")
@@ -76,16 +78,36 @@ class AreasRepository:
             ContentType="application/json; charset=utf-8",
         )
 
+    @staticmethod
+    def _normalize_area_record(area_dict: dict, slug_hint: Optional[str] = None) -> dict:
+        normalized = deepcopy(area_dict)
+        normalized["slug"] = str(normalized.get("slug") or slug_hint or "").strip()
+        normalized["mode"] = str(normalized.get("mode") or "manual")
+        if normalized["mode"] != "automatic":
+            normalized["mode"] = "manual"
+            normalized["automatic_source"] = None
+            return normalized
+
+        automatic_source = deepcopy(normalized.get("automatic_source") or {})
+        automatic_source["type"] = str(automatic_source.get("type") or "kml_upload")
+        if automatic_source["type"] not in {"kml_upload", "network_link"}:
+            automatic_source["type"] = "kml_upload"
+        if automatic_source["type"] != "network_link":
+            automatic_source["refresh_interval_seconds"] = None
+        normalized["automatic_source"] = automatic_source
+        return normalized
+
     def _hydrate_from_raw(self, raw: dict) -> None:
         self._areas_data = {}
         self._geometries = {}
         for slug, area_dict in raw.items():
-            self._areas_data[slug] = area_dict
-            self._geometries[slug] = self._build_geometry(area_dict["polygons"])
+            normalized = self._normalize_area_record(area_dict, slug)
+            self._areas_data[normalized["slug"]] = normalized
+            self._geometries[normalized["slug"]] = self._build_geometry(normalized["polygons"])
 
     def _ensure_loaded(self) -> None:
         with self._lock:
-            if self._loaded and self._areas_data:
+            if self._loaded:
                 return
 
             raw = self._download_raw_areas()
@@ -122,12 +144,50 @@ class AreasRepository:
             return len(poly_data["points"])
         return 0
 
+    def _apply_area_record(self, area_dict: dict) -> None:
+        normalized = self._normalize_area_record(area_dict, area_dict.get("slug"))
+        slug = normalized["slug"]
+        self._areas_data[slug] = normalized
+        self._geometries[slug] = self._build_geometry(normalized["polygons"])
+
+    def _refresh_area_locked(self, slug: str, force: bool = False) -> Optional[dict]:
+        current = self._areas_data.get(slug)
+        if current is None:
+            return None
+
+        refreshed = maybe_refresh_automatic_area(current, force=force)
+        if refreshed != current:
+            self._apply_area_record(refreshed)
+            self._upload_raw_areas()
+
+        return self._areas_data.get(slug)
+
+    def refresh_area(self, slug: str, force: bool = False) -> Optional[dict]:
+        with self._lock:
+            self._ensure_loaded()
+            return self._refresh_area_locked(slug, force=force)
+
+    def refresh_all_automatic_areas(self) -> None:
+        with self._lock:
+            self._ensure_loaded()
+            changed = False
+            automatic_slugs = [
+                slug for slug, data in self._areas_data.items() if data.get("mode") == "automatic"
+            ]
+            for slug in automatic_slugs:
+                current = self._areas_data.get(slug)
+                refreshed = maybe_refresh_automatic_area(current or {})
+                if refreshed != current:
+                    self._apply_area_record(refreshed)
+                    changed = True
+            if changed:
+                self._upload_raw_areas()
+
     def upsert(self, area: AreaInput) -> None:
         with self._lock:
             self._ensure_loaded()
-            area_dict = area.model_dump()
-            self._areas_data[area.slug] = area_dict
-            self._geometries[area.slug] = self._build_geometry(area_dict["polygons"])
+            area_dict = self._normalize_area_record(area.model_dump(), area.slug)
+            self._apply_area_record(area_dict)
             self._upload_raw_areas()
 
     def patch(self, slug: str, changes: dict) -> Optional[dict]:
@@ -144,17 +204,18 @@ class AreasRepository:
                 "agencia": changes.get("agencia", current.get("agencia", "")),
                 "relevancia": changes.get("relevancia", current.get("relevancia", 1)),
                 "polygons": changes.get("polygons", current["polygons"]),
+                "mode": changes.get("mode", current.get("mode", "manual")),
+                "automatic_source": changes.get("automatic_source", current.get("automatic_source")),
             }
 
-            self._areas_data[new_slug] = updated
-            self._geometries[new_slug] = self._build_geometry(updated["polygons"])
+            self._apply_area_record(updated)
 
             if new_slug != slug:
                 del self._areas_data[slug]
                 del self._geometries[slug]
 
             self._upload_raw_areas()
-            return updated
+            return self._areas_data.get(new_slug)
 
     def delete(self, slug: str) -> bool:
         with self._lock:
@@ -167,39 +228,63 @@ class AreasRepository:
             return True
 
     def get_geometry(self, slug: str) -> Optional[MultiPolygon]:
-        self._ensure_loaded()
-        return self._geometries.get(slug)
+        with self._lock:
+            self._ensure_loaded()
+            self._refresh_area_locked(slug)
+            return self._geometries.get(slug)
 
     def get_raw(self, slug: str) -> Optional[dict]:
-        self._ensure_loaded()
-        return self._areas_data.get(slug)
+        with self._lock:
+            self._ensure_loaded()
+            return self._refresh_area_locked(slug)
 
     def find_slugs_by_agencias(self, agencias: list[str]) -> list[str]:
-        self._ensure_loaded()
-        normalized = {agencia.strip().casefold() for agencia in agencias}
-        return [
-            slug
-            for slug, data in self._areas_data.items()
-            if str(data.get("agencia", "")).strip().casefold() in normalized
-        ]
+        with self._lock:
+            self._ensure_loaded()
+            normalized = {agencia.strip().casefold() for agencia in agencias}
+            return [
+                slug
+                for slug, data in self._areas_data.items()
+                if str(data.get("agencia", "")).strip().casefold() in normalized
+            ]
 
     def list_all(self) -> list[dict]:
-        self._ensure_loaded()
-        return [
-            {
-                "name": data["name"],
-                "slug": slug,
-                "polygon_count": len(data["polygons"]),
-                "total_points": sum(
-                    self._count_polygon_points(polygon) for polygon in data["polygons"]
-                ),
-            }
-            for slug, data in self._areas_data.items()
-        ]
+        with self._lock:
+            self._ensure_loaded()
+            automatic_slugs = [
+                slug for slug, data in self._areas_data.items() if data.get("mode") == "automatic"
+            ]
+            changed = False
+            for slug in automatic_slugs:
+                current = self._areas_data.get(slug)
+                refreshed = maybe_refresh_automatic_area(current or {})
+                if refreshed != current:
+                    self._apply_area_record(refreshed)
+                    changed = True
+            if changed:
+                self._upload_raw_areas()
+
+            return [
+                {
+                    "name": data["name"],
+                    "slug": slug,
+                    "polygon_count": len(data["polygons"]),
+                    "total_points": sum(
+                        self._count_polygon_points(polygon) for polygon in data["polygons"]
+                    ),
+                    "mode": data.get("mode", "manual"),
+                    "automatic_source_type": (data.get("automatic_source") or {}).get("type"),
+                    "last_refreshed_at": (data.get("automatic_source") or {}).get("last_refreshed_at"),
+                    "last_refresh_attempt_at": (data.get("automatic_source") or {}).get("last_refresh_attempt_at"),
+                    "last_refresh_error": (data.get("automatic_source") or {}).get("last_refresh_error"),
+                }
+                for slug, data in self._areas_data.items()
+            ]
 
     def exists(self, slug: str) -> bool:
-        self._ensure_loaded()
-        return slug in self._areas_data
+        with self._lock:
+            self._ensure_loaded()
+            return slug in self._areas_data
 
 
 repository = AreasRepository()

@@ -2,6 +2,9 @@
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+AreaMode = Literal["manual", "automatic"]
+AutomaticSourceType = Literal["kml_upload", "network_link"]
+
 
 class PointInput(BaseModel):
     lat: float = Field(..., description="Latitude do ponto alvo", ge=-90, le=90)
@@ -123,6 +126,38 @@ class PolygonInput(BaseModel):
         return coordinates
 
 
+class AutomaticSourceInput(BaseModel):
+    type: AutomaticSourceType
+    source_file_name: Optional[str] = Field(default=None, description="Nome do arquivo KML/KMZ enviado")
+    link_document_name: Optional[str] = Field(
+        default=None,
+        description="Nome do documento que contem o NetworkLink",
+    )
+    link_name: Optional[str] = Field(default=None, description="Nome do NetworkLink encontrado no arquivo")
+    source_url: Optional[str] = Field(default=None, description="URL remota usada no refresh automatico")
+    resolved_document_name: Optional[str] = Field(
+        default=None,
+        description="Nome do documento que originou os polygons efetivos",
+    )
+    refresh_interval_seconds: Optional[int] = Field(
+        default=None,
+        ge=30,
+        description="Intervalo de refresh para NetworkLink em segundos",
+    )
+    last_refresh_attempt_at: Optional[str] = Field(
+        default=None,
+        description="Data/hora ISO da ultima tentativa de refresh",
+    )
+    last_refreshed_at: Optional[str] = Field(
+        default=None,
+        description="Data/hora ISO do ultimo refresh com sucesso",
+    )
+    last_refresh_error: Optional[str] = Field(
+        default=None,
+        description="Ultimo erro de refresh, se houver",
+    )
+
+
 class AreaInput(BaseModel):
     """
     Area geografica. Aceita multiplos polygons (ilhas separadas).
@@ -137,6 +172,19 @@ class AreaInput(BaseModel):
     agencia: str = Field(..., description="Nome da agencia/unidade da imobiliaria (ex: SH Perdizes)")
     relevancia: int = Field(..., description="Nivel de relevancia da area (1 a 10)", ge=1, le=10)
     polygons: list[PolygonInput] = Field(..., min_length=1)
+    mode: AreaMode = Field(default="manual", description="Modo de manutencao da area")
+    automatic_source: Optional[AutomaticSourceInput] = Field(
+        default=None,
+        description="Metadados da origem automatica da area",
+    )
+
+    @model_validator(mode="after")
+    def validate_mode_fields(self):
+        if self.mode == "automatic" and self.automatic_source is None:
+            raise ValueError("Areas automaticas precisam informar automatic_source.")
+        if self.mode == "manual":
+            self.automatic_source = None
+        return self
 
     model_config = {
         "json_schema_extra": {
@@ -160,6 +208,8 @@ class AreaInput(BaseModel):
                             ]
                         }
                     ],
+                    "mode": "manual",
+                    "automatic_source": None,
                 }
             ]
         }
@@ -188,6 +238,11 @@ class AreaPatchInput(BaseModel):
         min_length=1,
         description="Novo conjunto de polygons GeoJSON",
     )
+    mode: Optional[AreaMode] = Field(default=None, description="Novo modo da area")
+    automatic_source: Optional[AutomaticSourceInput] = Field(
+        default=None,
+        description="Nova configuracao de origem automatica",
+    )
 
     @model_validator(mode="after")
     def validate_at_least_one_field(self):
@@ -197,10 +252,16 @@ class AreaPatchInput(BaseModel):
             and self.agencia is None
             and self.relevancia is None
             and self.polygons is None
+            and self.mode is None
+            and self.automatic_source is None
         ):
             raise ValueError(
-                "Informe ao menos um campo para atualizar: name, slug, agencia, relevancia ou polygons."
+                "Informe ao menos um campo para atualizar: name, slug, agencia, relevancia, polygons, mode ou automatic_source."
             )
+        if self.mode == "automatic" and self.automatic_source is None:
+            raise ValueError("Atualizacoes para modo automatico precisam informar automatic_source.")
+        if self.mode == "manual" and self.automatic_source is not None:
+            raise ValueError("Nao informe automatic_source quando o modo for manual.")
         return self
 
 
@@ -209,3 +270,8 @@ class AreaSummary(BaseModel):
     slug: str
     polygon_count: int
     total_points: int
+    mode: AreaMode = "manual"
+    automatic_source_type: Optional[AutomaticSourceType] = None
+    last_refreshed_at: Optional[str] = None
+    last_refresh_attempt_at: Optional[str] = None
+    last_refresh_error: Optional[str] = None
