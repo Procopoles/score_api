@@ -229,6 +229,9 @@ FRONTEND_HTML = """
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
+    .form-grid.triple {
+      grid-template-columns: 1fr 1fr 120px;
+    }
     .form-grid.full {
       grid-template-columns: 1fr;
     }
@@ -247,6 +250,45 @@ FRONTEND_HTML = """
       font-family: inherit;
       background: #fff;
       color: var(--text);
+    }
+    .color-field {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .color-picker {
+      width: 52px;
+      min-width: 52px;
+      height: 42px;
+      padding: 4px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .color-picker::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    .color-picker::-webkit-color-swatch {
+      border: 0;
+      border-radius: 999px;
+    }
+    .color-picker::-moz-color-swatch {
+      border: 0;
+      border-radius: 999px;
+    }
+    .area-name-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .color-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(16, 36, 61, 0.12);
+      flex: 0 0 auto;
     }
     textarea {
       min-height: 180px;
@@ -371,7 +413,8 @@ FRONTEND_HTML = """
             <tr>
               <th>Area</th>
               <th>Modo</th>
-              <th>Fonte</th>
+              <th>Agencia</th>
+              <th>Relevancia</th>
               <th>Pontos</th>
               <th>Atualizado</th>
               <th>Acoes</th>
@@ -402,7 +445,7 @@ FRONTEND_HTML = """
                 <input id="manual-slug" required pattern="^[a-z0-9_]+$" />
               </div>
             </div>
-            <div class="form-grid">
+            <div class="form-grid triple">
               <div>
                 <label for="manual-agencia">Agencia</label>
                 <input id="manual-agencia" required />
@@ -410,6 +453,10 @@ FRONTEND_HTML = """
               <div>
                 <label for="manual-relevancia">Relevancia (1-10)</label>
                 <input id="manual-relevancia" type="number" min="1" max="10" required />
+              </div>
+              <div class="color-field">
+                <label for="manual-color">Cor</label>
+                <input id="manual-color" class="color-picker" type="color" value="#0b7285" />
               </div>
             </div>
             <div class="form-grid full">
@@ -441,7 +488,7 @@ FRONTEND_HTML = """
                 <input id="automatic-slug" required pattern="^[a-z0-9_]+$" />
               </div>
             </div>
-            <div class="form-grid">
+            <div class="form-grid triple">
               <div>
                 <label for="automatic-agencia">Agencia</label>
                 <input id="automatic-agencia" required />
@@ -449,6 +496,10 @@ FRONTEND_HTML = """
               <div>
                 <label for="automatic-relevancia">Relevancia (1-10)</label>
                 <input id="automatic-relevancia" type="number" min="1" max="10" required />
+              </div>
+              <div class="color-field">
+                <label for="automatic-color">Cor</label>
+                <input id="automatic-color" class="color-picker" type="color" value="#0b7285" />
               </div>
             </div>
             <div class="form-grid">
@@ -544,6 +595,7 @@ FRONTEND_HTML = """
       manualSlug: document.getElementById("manual-slug"),
       manualAgencia: document.getElementById("manual-agencia"),
       manualRelevancia: document.getElementById("manual-relevancia"),
+      manualColor: document.getElementById("manual-color"),
       manualPolygons: document.getElementById("manual-polygons"),
       manualPreviewBtn: document.getElementById("manual-preview-btn"),
       manualResetBtn: document.getElementById("manual-reset-btn"),
@@ -552,6 +604,7 @@ FRONTEND_HTML = """
       automaticSlug: document.getElementById("automatic-slug"),
       automaticAgencia: document.getElementById("automatic-agencia"),
       automaticRelevancia: document.getElementById("automatic-relevancia"),
+      automaticColor: document.getElementById("automatic-color"),
       automaticSourceKind: document.getElementById("automatic-source-kind"),
       automaticRefreshInterval: document.getElementById("automatic-refresh-interval"),
       refreshIntervalWrapper: document.getElementById("refresh-interval-wrapper"),
@@ -590,12 +643,6 @@ FRONTEND_HTML = """
       return mode === "automatic" ? "Automatico" : "Manual";
     }
 
-    function sourceLabel(area) {
-      if ((area.mode || "manual") !== "automatic") return "JSON manual";
-      if (area.automatic_source_type === "network_link") return "NetworkLink";
-      return "Arquivo KML/KMZ";
-    }
-
     function humanDate(value) {
       if (!value) return "-";
       const parsed = new Date(value);
@@ -630,7 +677,35 @@ FRONTEND_HTML = """
       let hash = 0;
       for (let i = 0; i < slug.length; i++) hash = slug.charCodeAt(i) + ((hash << 5) - hash);
       const hue = Math.abs(hash) % 360;
-      return `hsl(${hue}, 70%, 42%)`;
+      return hslToHex(hue, 70, 42);
+    }
+
+    function hslToHex(hue, saturation, lightness) {
+      const s = saturation / 100;
+      const l = lightness / 100;
+      const chroma = (1 - Math.abs(2 * l - 1)) * s;
+      const hueSection = (hue / 60) % 6;
+      const x = chroma * (1 - Math.abs((hueSection % 2) - 1));
+      let r1 = 0;
+      let g1 = 0;
+      let b1 = 0;
+
+      if (hueSection >= 0 && hueSection < 1) [r1, g1, b1] = [chroma, x, 0];
+      else if (hueSection < 2) [r1, g1, b1] = [x, chroma, 0];
+      else if (hueSection < 3) [r1, g1, b1] = [0, chroma, x];
+      else if (hueSection < 4) [r1, g1, b1] = [0, x, chroma];
+      else if (hueSection < 5) [r1, g1, b1] = [x, 0, chroma];
+      else [r1, g1, b1] = [chroma, 0, x];
+
+      const match = l - chroma / 2;
+      const toHex = (value) => Math.round((value + match) * 255).toString(16).padStart(2, "0");
+      return `#${toHex(r1)}${toHex(g1)}${toHex(b1)}`;
+    }
+
+    function normalizeColor(value, slug = "") {
+      const normalized = String(value || "").trim().toLowerCase();
+      if (/^#[0-9a-f]{6}$/.test(normalized)) return normalized;
+      return colorFromSlug(slug || "area");
     }
 
     function polygonsToLeafletLatLngs(polygons) {
@@ -762,14 +837,14 @@ FRONTEND_HTML = """
       });
     }
 
-    function drawPreviewPolygons(polygons, message) {
+    function drawPreviewPolygons(polygons, message, color = "#38bdf8") {
       removePreviewLayer();
       const latLngPolygons = polygonsToLeafletLatLngs(polygons);
       const layers = latLngPolygons.map((latLngRings) =>
         L.polygon(latLngRings, {
           color: "#0f172a",
           weight: 2,
-          fillColor: "#38bdf8",
+          fillColor: color,
           fillOpacity: 0.22,
           dashArray: "7 5",
         })
@@ -781,7 +856,7 @@ FRONTEND_HTML = """
     }
 
     function drawAreaOnMap(area) {
-      const color = colorFromSlug(area.slug);
+      const color = normalizeColor(area.color, area.slug);
       let latLngPolygons;
       try {
         latLngPolygons = polygonsToLeafletLatLngs(area.polygons || []);
@@ -850,6 +925,7 @@ FRONTEND_HTML = """
       }
       els.manualForm.reset();
       els.manualRelevancia.value = 1;
+      els.manualColor.value = "#0b7285";
       els.manualPolygons.value = DEFAULT_MANUAL_POLYGONS;
       removePreviewLayer();
       if (state.activeMode === "manual") {
@@ -864,6 +940,7 @@ FRONTEND_HTML = """
       }
       els.automaticForm.reset();
       els.automaticRelevancia.value = 1;
+      els.automaticColor.value = "#0b7285";
       els.automaticSourceKind.value = "kml_upload";
       els.automaticRefreshInterval.value = 300;
       toggleAutomaticRefreshInterval();
@@ -921,11 +998,12 @@ FRONTEND_HTML = """
       els.listMeta.textContent = `${visibleAreas.length} area(s) em ${modeLabel(state.activeMode).toLowerCase()} de um total de ${state.areas.length}.`;
 
       if (!visibleAreas.length) {
-        els.body.innerHTML = '<tr><td colspan="6" class="muted">Nenhuma area cadastrada neste modo.</td></tr>';
+        els.body.innerHTML = '<tr><td colspan="7" class="muted">Nenhuma area cadastrada neste modo.</td></tr>';
         return;
       }
 
       els.body.innerHTML = visibleAreas.map((area) => {
+        const color = normalizeColor(area.color, area.slug);
         const refreshText = area.mode === "automatic"
           ? (area.last_refresh_error ? `Erro: ${escapeHtml(area.last_refresh_error)}` : escapeHtml(humanDate(area.last_refreshed_at)))
           : "-";
@@ -938,17 +1016,21 @@ FRONTEND_HTML = """
           <tr>
             <td>
               <div class="name-cell">
-                <strong>${escapeHtml(area.name)}</strong>
+                <div class="area-name-line">
+                  <span class="color-dot" style="background:${escapeHtml(color)};"></span>
+                  <strong>${escapeHtml(area.name)}</strong>
+                </div>
                 <span class="mini"><code>${escapeHtml(area.slug)}</code></span>
               </div>
             </td>
             <td><span class="badge ${badgeClass}">${escapeHtml(modeLabel(area.mode || "manual"))}</span></td>
             <td>
               <div class="name-cell">
-                <span>${escapeHtml(sourceLabel(area))}</span>
-                <span class="mini">${escapeHtml(area.automatic_source_type || area.mode || "manual")}</span>
+                <span>${escapeHtml(area.agencia || "-")}</span>
+                <span class="mini">${escapeHtml(color)}</span>
               </div>
             </td>
+            <td>${escapeHtml(area.relevancia ?? "-")}</td>
             <td>
               <div class="name-cell">
                 <span>${escapeHtml(area.total_points)}</span>
@@ -1061,6 +1143,7 @@ FRONTEND_HTML = """
           els.automaticSlug.value = data.slug || "";
           els.automaticAgencia.value = data.agencia || "";
           els.automaticRelevancia.value = data.relevancia || 1;
+          els.automaticColor.value = normalizeColor(data.color, data.slug || slug);
           els.automaticSourceKind.value = data.automatic_source?.type || "kml_upload";
           els.automaticRefreshInterval.value = data.automatic_source?.refresh_interval_seconds || 300;
           toggleAutomaticRefreshInterval();
@@ -1073,6 +1156,7 @@ FRONTEND_HTML = """
           els.manualSlug.value = data.slug || "";
           els.manualAgencia.value = data.agencia || "";
           els.manualRelevancia.value = data.relevancia || 1;
+          els.manualColor.value = normalizeColor(data.color, data.slug || slug);
           els.manualPolygons.value = JSON.stringify(data.polygons || [], null, 2);
           setStatus("Modo edicao manual ativado.");
         }
@@ -1114,7 +1198,11 @@ FRONTEND_HTML = """
     function previewManualPolygons() {
       try {
         const polygons = parseManualPolygonsFromInput(true);
-        drawPreviewPolygons(polygons, "Preview manual aplicado no mapa.");
+        drawPreviewPolygons(
+          polygons,
+          "Preview manual aplicado no mapa.",
+          normalizeColor(els.manualColor.value, els.manualSlug.value.trim())
+        );
       } catch (error) {
         setStatus(error.message || "Falha no preview dos polygons.", true);
       }
@@ -1137,6 +1225,7 @@ FRONTEND_HTML = """
         slug: els.manualSlug.value.trim(),
         agencia: els.manualAgencia.value.trim(),
         relevancia: Number(els.manualRelevancia.value),
+        color: normalizeColor(els.manualColor.value, els.manualSlug.value.trim()),
         polygons,
         mode: "manual",
       };
@@ -1171,6 +1260,7 @@ FRONTEND_HTML = """
       formData.append("slug", els.automaticSlug.value.trim());
       formData.append("agencia", els.automaticAgencia.value.trim());
       formData.append("relevancia", String(Number(els.automaticRelevancia.value)));
+      formData.append("color", normalizeColor(els.automaticColor.value, els.automaticSlug.value.trim()));
       formData.append("source_kind", els.automaticSourceKind.value);
       if (els.automaticSourceKind.value === "network_link") {
         formData.append("refresh_interval_seconds", String(Number(els.automaticRefreshInterval.value || 300)));
@@ -1208,7 +1298,11 @@ FRONTEND_HTML = """
       }
 
       try {
-        drawPreviewPolygons(data.polygons || [], "Arquivo automatico lido com sucesso.");
+        drawPreviewPolygons(
+          data.polygons || [],
+          "Arquivo automatico lido com sucesso.",
+          normalizeColor(els.automaticColor.value, els.automaticSlug.value.trim())
+        );
       } catch (error) {
         setStatus(error.message || "Nao foi possivel desenhar o preview automatico.", true);
         return;
@@ -1286,6 +1380,7 @@ FRONTEND_HTML = """
         slug: els.automaticSlug.value.trim(),
         agencia: els.automaticAgencia.value.trim(),
         relevancia: Number(els.automaticRelevancia.value),
+        color: normalizeColor(els.automaticColor.value, els.automaticSlug.value.trim()),
         mode: "automatic",
         automatic_source: automaticSource,
       };

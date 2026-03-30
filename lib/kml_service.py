@@ -224,6 +224,7 @@ def build_automatic_area_record(
     slug: str,
     agencia: str,
     relevancia: int,
+    color: str,
 ) -> dict:
     preview = preview_automatic_source(
         source_kind=source_kind,
@@ -237,6 +238,7 @@ def build_automatic_area_record(
         "slug": slug,
         "agencia": agencia,
         "relevancia": relevancia,
+        "color": color,
         "polygons": preview["polygons"],
         "mode": "automatic",
         "automatic_source": preview["automatic_source"],

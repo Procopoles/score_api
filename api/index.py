@@ -798,6 +798,7 @@ async def save_automatic_area(
     slug: str = Form(...),
     agencia: str = Form(...),
     relevancia: int = Form(...),
+    color: str = Form(...),
     source_kind: str = Form(...),
     refresh_interval_seconds: Optional[int] = Form(default=None),
     editing_slug: Optional[str] = Form(default=None),
@@ -822,6 +823,7 @@ async def save_automatic_area(
             slug=slug,
             agencia=agencia,
             relevancia=relevancia,
+            color=color,
         )
         area = AreaInput.model_validate(area_record)
     except ValueError as exc:

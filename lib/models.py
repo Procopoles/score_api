@@ -1,9 +1,12 @@
 ﻿from typing import Literal, Optional
 
+import re
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 AreaMode = Literal["manual", "automatic"]
 AutomaticSourceType = Literal["kml_upload", "network_link"]
+HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 class PointInput(BaseModel):
@@ -158,6 +161,13 @@ class AutomaticSourceInput(BaseModel):
     )
 
 
+def _validate_hex_color(value: str) -> str:
+    normalized = (value or "").strip()
+    if not HEX_COLOR_PATTERN.fullmatch(normalized):
+        raise ValueError("Cor invalida. Use o formato hexadecimal #RRGGBB.")
+    return normalized.lower()
+
+
 class AreaInput(BaseModel):
     """
     Area geografica. Aceita multiplos polygons (ilhas separadas).
@@ -171,6 +181,7 @@ class AreaInput(BaseModel):
     )
     agencia: str = Field(..., description="Nome da agencia/unidade da imobiliaria (ex: SH Perdizes)")
     relevancia: int = Field(..., description="Nivel de relevancia da area (1 a 10)", ge=1, le=10)
+    color: str = Field(..., description="Cor da area no mapa no formato hexadecimal #RRGGBB")
     polygons: list[PolygonInput] = Field(..., min_length=1)
     mode: AreaMode = Field(default="manual", description="Modo de manutencao da area")
     automatic_source: Optional[AutomaticSourceInput] = Field(
@@ -186,6 +197,11 @@ class AreaInput(BaseModel):
             self.automatic_source = None
         return self
 
+    @field_validator("color")
+    @classmethod
+    def validate_color(cls, value: str) -> str:
+        return _validate_hex_color(value)
+
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -194,6 +210,7 @@ class AreaInput(BaseModel):
                     "slug": "area_principal",
                     "agencia": "SH Perdizes",
                     "relevancia": 8,
+                    "color": "#0b7285",
                     "polygons": [
                         {
                             "type": "Polygon",
@@ -233,6 +250,10 @@ class AreaPatchInput(BaseModel):
         ge=1,
         le=10,
     )
+    color: Optional[str] = Field(
+        default=None,
+        description="Nova cor da area no formato hexadecimal #RRGGBB",
+    )
     polygons: Optional[list[PolygonInput]] = Field(
         default=None,
         min_length=1,
@@ -251,12 +272,13 @@ class AreaPatchInput(BaseModel):
             and self.slug is None
             and self.agencia is None
             and self.relevancia is None
+            and self.color is None
             and self.polygons is None
             and self.mode is None
             and self.automatic_source is None
         ):
             raise ValueError(
-                "Informe ao menos um campo para atualizar: name, slug, agencia, relevancia, polygons, mode ou automatic_source."
+                "Informe ao menos um campo para atualizar: name, slug, agencia, relevancia, color, polygons, mode ou automatic_source."
             )
         if self.mode == "automatic" and self.automatic_source is None:
             raise ValueError("Atualizacoes para modo automatico precisam informar automatic_source.")
@@ -264,10 +286,20 @@ class AreaPatchInput(BaseModel):
             raise ValueError("Nao informe automatic_source quando o modo for manual.")
         return self
 
+    @field_validator("color")
+    @classmethod
+    def validate_color(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return _validate_hex_color(value)
+
 
 class AreaSummary(BaseModel):
     name: str
     slug: str
+    agencia: str
+    relevancia: int
+    color: str
     polygon_count: int
     total_points: int
     mode: AreaMode = "manual"

@@ -19,6 +19,47 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 MINIO_REGION = os.getenv("MINIO_REGION", "us-east-1")
 
 
+def _color_from_slug(slug: str) -> str:
+    hash_value = 0
+    for character in slug:
+        hash_value = ord(character) + ((hash_value << 5) - hash_value)
+    hue = abs(hash_value) % 360
+    return f"hsl({hue}, 70%, 42%)"
+
+
+def _hsl_to_hex(hsl_value: str) -> str:
+    try:
+        raw = hsl_value.strip().removeprefix("hsl(").removesuffix(")")
+        hue_text, saturation_text, lightness_text = [part.strip() for part in raw.split(",")]
+        hue = float(hue_text)
+        saturation = float(saturation_text.removesuffix("%")) / 100
+        lightness = float(lightness_text.removesuffix("%")) / 100
+    except Exception:
+        return "#0b7285"
+
+    chroma = (1 - abs(2 * lightness - 1)) * saturation
+    hue_section = (hue / 60) % 6
+    x_value = chroma * (1 - abs(hue_section % 2 - 1))
+    if 0 <= hue_section < 1:
+        red_1, green_1, blue_1 = chroma, x_value, 0
+    elif 1 <= hue_section < 2:
+        red_1, green_1, blue_1 = x_value, chroma, 0
+    elif 2 <= hue_section < 3:
+        red_1, green_1, blue_1 = 0, chroma, x_value
+    elif 3 <= hue_section < 4:
+        red_1, green_1, blue_1 = 0, x_value, chroma
+    elif 4 <= hue_section < 5:
+        red_1, green_1, blue_1 = x_value, 0, chroma
+    else:
+        red_1, green_1, blue_1 = chroma, 0, x_value
+
+    match_value = lightness - chroma / 2
+    red = round((red_1 + match_value) * 255)
+    green = round((green_1 + match_value) * 255)
+    blue = round((blue_1 + match_value) * 255)
+    return f"#{red:02x}{green:02x}{blue:02x}"
+
+
 class AreasRepository:
     """
     Armazena areas no MinIO e mantem geometrias Shapely em memoria.
@@ -82,6 +123,9 @@ class AreasRepository:
     def _normalize_area_record(area_dict: dict, slug_hint: Optional[str] = None) -> dict:
         normalized = deepcopy(area_dict)
         normalized["slug"] = str(normalized.get("slug") or slug_hint or "").strip()
+        normalized["color"] = str(
+            normalized.get("color") or _hsl_to_hex(_color_from_slug(normalized["slug"]))
+        ).strip().lower()
         normalized["mode"] = str(normalized.get("mode") or "manual")
         if normalized["mode"] != "automatic":
             normalized["mode"] = "manual"
@@ -203,6 +247,7 @@ class AreasRepository:
                 "slug": new_slug,
                 "agencia": changes.get("agencia", current.get("agencia", "")),
                 "relevancia": changes.get("relevancia", current.get("relevancia", 1)),
+                "color": changes.get("color", current.get("color")),
                 "polygons": changes.get("polygons", current["polygons"]),
                 "mode": changes.get("mode", current.get("mode", "manual")),
                 "automatic_source": changes.get("automatic_source", current.get("automatic_source")),
@@ -268,6 +313,9 @@ class AreasRepository:
                 {
                     "name": data["name"],
                     "slug": slug,
+                    "agencia": data.get("agencia", ""),
+                    "relevancia": data.get("relevancia", 1),
+                    "color": data.get("color") or _hsl_to_hex(_color_from_slug(slug)),
                     "polygon_count": len(data["polygons"]),
                     "total_points": sum(
                         self._count_polygon_points(polygon) for polygon in data["polygons"]
