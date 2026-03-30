@@ -62,6 +62,24 @@ FRONTEND_HTML = """
       min-height: 100%;
       background: linear-gradient(135deg, rgba(11, 114, 133, 0.08), rgba(255, 255, 255, 0.95));
     }
+    .title-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .nav-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      background: rgba(11, 114, 133, 0.12);
+      color: var(--primary-strong);
+      font-size: 14px;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
     h1, h2, h3 { margin: 0; }
     .muted { color: var(--subtle); }
     .hero-metrics {
@@ -117,8 +135,8 @@ FRONTEND_HTML = """
     }
     #map {
       width: 100%;
-      height: 58vh;
-      min-height: 380px;
+      height: 62vh;
+      min-height: 420px;
       border-radius: 16px;
       border: 1px solid var(--border);
       overflow: hidden;
@@ -178,6 +196,31 @@ FRONTEND_HTML = """
       vertical-align: top;
     }
     th { color: var(--subtle); font-weight: 600; }
+    tr.agency-group-row td {
+      padding: 16px 8px 8px;
+      border-bottom: 0;
+    }
+    .agency-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(11, 114, 133, 0.08), rgba(255, 255, 255, 0.96));
+      border: 1px solid rgba(11, 114, 133, 0.12);
+    }
+    .agency-group strong {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+    .agency-count {
+      font-size: 12px;
+      color: var(--subtle);
+      white-space: nowrap;
+    }
     .name-cell {
       display: grid;
       gap: 4px;
@@ -334,8 +377,8 @@ FRONTEND_HTML = """
         grid-template-columns: 1fr;
       }
       #map {
-        height: 46vh;
-        min-height: 330px;
+        height: 50vh;
+        min-height: 360px;
       }
     }
     @media (max-width: 740px) {
@@ -360,14 +403,17 @@ FRONTEND_HTML = """
     <section class="hero">
       <div class="panel hero-card">
         <div>
-          <h1>Gestao de Areas</h1>
+          <div class="title-line">
+            <span class="nav-icon">⌖</span>
+            <h1>Gestao de Areas</h1>
+          </div>
           <p class="muted" style="margin:8px 0 0;">
-            Separe a operacao em modo manual e automatico sem perder o mesmo JSON do object store.
+            Organize, revise e atualize as areas do mapa em um unico painel.
           </p>
         </div>
         <div class="tab-bar" id="mode-tabs">
-          <button class="tab-btn active" id="tab-manual" type="button">Manual</button>
-          <button class="tab-btn" id="tab-automatic" type="button">Automatico</button>
+          <button class="tab-btn active" id="tab-manual" type="button">◫ Manual</button>
+          <button class="tab-btn" id="tab-automatic" type="button">◎ Automatico</button>
         </div>
         <div class="hero-metrics">
           <div class="metric">
@@ -384,16 +430,19 @@ FRONTEND_HTML = """
           </div>
         </div>
         <div class="hero-note" id="mode-note">
-          No modo manual, o fluxo continua igual ao atual: polygons em JSON, preview local e CRUD direto.
+          Use o modo manual para ajustes diretos e o automatico para manter arquivos sincronizados.
         </div>
       </div>
       <div class="panel">
         <div class="list-head" style="margin-bottom:12px;">
           <div>
-            <h2>Mapa</h2>
+            <div class="title-line">
+              <span class="nav-icon">⌖</span>
+              <h2>Mapa</h2>
+            </div>
             <div class="muted" id="map-meta">Carregando areas...</div>
           </div>
-          <span class="pill" id="auto-refresh-pill">Atualizacao automatica a cada 60s</span>
+          <span class="pill" id="auto-refresh-pill">↻ Atualizacao automatica</span>
         </div>
         <div id="map"></div>
       </div>
@@ -403,7 +452,10 @@ FRONTEND_HTML = """
       <div class="panel">
         <div class="list-head">
           <div>
-            <h2>Areas cadastradas</h2>
+            <div class="title-line">
+              <span class="nav-icon">▦</span>
+              <h2>Areas cadastradas</h2>
+            </div>
             <div class="muted" id="list-meta">Carregando...</div>
           </div>
           <span class="pill" id="visible-filter-pill">Filtro: Manual</span>
@@ -427,8 +479,11 @@ FRONTEND_HTML = """
       <div class="panel">
         <div class="editor-head">
           <div>
-            <h2 id="editor-title">Cadastro manual</h2>
-            <div class="muted" id="editor-subtitle">Mesma manutencao atual dos polygons em JSON.</div>
+            <div class="title-line">
+              <span class="nav-icon">✎</span>
+              <h2 id="editor-title">Cadastro manual</h2>
+            </div>
+            <div class="muted" id="editor-subtitle">Preencha os dados e ajuste a area antes de salvar.</div>
           </div>
           <span class="pill" id="editor-pill">Modo ativo: Manual</span>
         </div>
@@ -461,18 +516,18 @@ FRONTEND_HTML = """
             </div>
             <div class="form-grid full">
               <div>
-                <label for="manual-polygons">Polygons (JSON array ou GeoJSON FeatureCollection)</label>
+                <label for="manual-polygons">Area do mapa</label>
                 <textarea id="manual-polygons" required>[{"type":"Polygon","coordinates":[[[-46.64,-23.55],[-46.62,-23.55],[-46.62,-23.56],[-46.64,-23.56],[-46.64,-23.55]]]}]</textarea>
               </div>
             </div>
             <div class="row-actions" style="margin-top:10px;">
-              <button class="primary" type="submit">Salvar manual</button>
-              <button type="button" id="manual-preview-btn">Preview no mapa</button>
-              <button type="button" id="manual-reset-btn">Limpar</button>
+              <button class="primary" type="submit">✦ Salvar manual</button>
+              <button type="button" id="manual-preview-btn">⌖ Ver no mapa</button>
+              <button type="button" id="manual-reset-btn">↺ Limpar</button>
             </div>
           </form>
           <div class="note-box">
-            O modo manual continua aceitando JSON array de polygons ou FeatureCollection GeoJSON.
+            Use este modo para criar, revisar e ajustar areas com mais controle.
           </div>
         </div>
 
@@ -504,31 +559,31 @@ FRONTEND_HTML = """
             </div>
             <div class="form-grid">
               <div>
-                <label for="automatic-source-kind">Origem do arquivo</label>
+                <label for="automatic-source-kind">Como deseja importar</label>
                 <select id="automatic-source-kind">
                   <option value="kml_upload">Arquivo KML/KMZ</option>
-                  <option value="network_link">KML/KMZ de Network Link</option>
+                  <option value="network_link">Arquivo com atualizacao automatica</option>
                 </select>
               </div>
               <div id="refresh-interval-wrapper">
-                <label for="automatic-refresh-interval">Refresh do link de rede (segundos)</label>
+                <label for="automatic-refresh-interval">Intervalo de atualizacao (segundos)</label>
                 <input id="automatic-refresh-interval" type="number" min="30" step="30" value="300" />
               </div>
             </div>
             <div class="form-grid full">
               <div>
-                <label for="automatic-file">Arquivo KML/KMZ</label>
+                <label for="automatic-file">Arquivo</label>
                 <input id="automatic-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" />
               </div>
             </div>
             <div class="note-box" id="automatic-source-summary">
-              Anexe um KML/KMZ para ler os polygons. Se selecionar Network Link, a API salva a URL remota e passa a atualizar o mapa automaticamente.
+              Envie um arquivo para visualizar a area e salvar com atualizacao sempre que precisar.
             </div>
             <div class="row-actions" style="margin-top:10px;">
-              <button class="primary" type="submit">Salvar automatico</button>
-              <button type="button" id="automatic-preview-btn">Ler arquivo</button>
-              <button type="button" class="warning" id="automatic-refresh-btn">Atualizar agora</button>
-              <button type="button" id="automatic-reset-btn">Limpar</button>
+              <button class="primary" type="submit">✦ Salvar automatico</button>
+              <button type="button" id="automatic-preview-btn">⌖ Ver arquivo</button>
+              <button type="button" class="warning" id="automatic-refresh-btn">↻ Atualizar agora</button>
+              <button type="button" id="automatic-reset-btn">↺ Limpar</button>
             </div>
           </form>
         </div>
@@ -536,10 +591,13 @@ FRONTEND_HTML = """
         <div class="status" id="status"></div>
 
         <div class="section-title">
-          <h3>Area selecionada (JSON)</h3>
+          <div class="title-line">
+            <span class="nav-icon">◌</span>
+            <h3>Detalhes da area</h3>
+          </div>
           <span class="pill" id="selection-pill">Nenhuma area selecionada</span>
         </div>
-        <pre id="area-json">Selecione uma area para visualizar os polygons.</pre>
+        <pre id="area-json">Selecione uma area para visualizar os detalhes.</pre>
       </div>
     </section>
   </div>
@@ -654,6 +712,22 @@ FRONTEND_HTML = """
       return state.areas.filter((area) => (area.mode || "manual") === state.activeMode);
     }
 
+    function groupAreasByAgency(areas) {
+      const groups = new Map();
+      areas.forEach((area) => {
+        const agency = String(area.agencia || "Sem agencia").trim() || "Sem agencia";
+        if (!groups.has(agency)) groups.set(agency, []);
+        groups.get(agency).push(area);
+      });
+
+      return [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0], "pt-BR"))
+        .map(([agency, agencyAreas]) => ({
+          agency,
+          areas: [...agencyAreas].sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug), "pt-BR")),
+        }));
+    }
+
     function updateMetrics() {
       const automaticCount = state.areas.filter((area) => (area.mode || "manual") === "automatic").length;
       els.metricVisible.textContent = String(getVisibleAreas().length);
@@ -663,13 +737,13 @@ FRONTEND_HTML = """
       els.editorPill.textContent = `Modo ativo: ${modeLabel(state.activeMode)}`;
       els.mapMeta.textContent = `${getVisibleAreas().length} area(s) visiveis no mapa de ${modeLabel(state.activeMode).toLowerCase()}.`;
       if (state.activeMode === "automatic") {
-        els.modeNote.textContent = "No modo automatico, a API interpreta KML/KMZ, suporta arquivos com NetworkLink e mantem os polygons atualizados pelo object store.";
+        els.modeNote.textContent = "Importe arquivos e mantenha as areas sincronizadas com menos trabalho manual.";
         els.editorTitle.textContent = "Cadastro automatico";
-        els.editorSubtitle.textContent = "Upload de KML/KMZ com refresh automatico para arquivos de Network Link.";
+        els.editorSubtitle.textContent = "Envie um arquivo, revise a visualizacao e salve a area.";
       } else {
-        els.modeNote.textContent = "No modo manual, o fluxo continua igual ao atual: polygons em JSON, preview local e CRUD direto.";
+        els.modeNote.textContent = "Crie, revise e ajuste areas manualmente com visualizacao imediata no mapa.";
         els.editorTitle.textContent = "Cadastro manual";
-        els.editorSubtitle.textContent = "Mesma manutencao atual dos polygons em JSON.";
+        els.editorSubtitle.textContent = "Preencha os dados e confirme a visualizacao antes de salvar.";
       }
     }
 
@@ -912,20 +986,19 @@ FRONTEND_HTML = """
 
     function renderAutomaticSourceSummary(automaticSource, extraLabel = "") {
       if (!automaticSource) {
-        els.automaticSourceSummary.textContent = "Anexe um KML/KMZ para ler os polygons. Se selecionar Network Link, a API salva a URL remota e passa a atualizar o mapa automaticamente.";
+        els.automaticSourceSummary.textContent = "Envie um arquivo para visualizar a area e salvar com a configuracao desejada.";
         return;
       }
 
       const lines = [];
       if (extraLabel) lines.push(`<strong>${escapeHtml(extraLabel)}</strong>`);
-      lines.push(`Tipo: ${escapeHtml(automaticSource.type === "network_link" ? "NetworkLink" : "Arquivo KML/KMZ")}`);
+      lines.push(`Origem: ${escapeHtml(automaticSource.type === "network_link" ? "Atualizacao automatica" : "Arquivo enviado")}`);
       if (automaticSource.source_file_name) lines.push(`Arquivo: ${escapeHtml(automaticSource.source_file_name)}`);
-      if (automaticSource.link_name) lines.push(`Link encontrado: ${escapeHtml(automaticSource.link_name)}`);
-      if (automaticSource.source_url) lines.push(`URL remota: ${escapeHtml(automaticSource.source_url)}`);
-      if (automaticSource.resolved_document_name) lines.push(`Documento efetivo: ${escapeHtml(automaticSource.resolved_document_name)}`);
-      if (automaticSource.refresh_interval_seconds) lines.push(`Refresh: ${escapeHtml(automaticSource.refresh_interval_seconds)}s`);
-      if (automaticSource.last_refreshed_at) lines.push(`Ultimo refresh: ${escapeHtml(humanDate(automaticSource.last_refreshed_at))}`);
-      if (automaticSource.last_refresh_error) lines.push(`Ultimo erro: ${escapeHtml(automaticSource.last_refresh_error)}`);
+      if (automaticSource.link_name) lines.push(`Referencia: ${escapeHtml(automaticSource.link_name)}`);
+      if (automaticSource.resolved_document_name) lines.push(`Mapa carregado: ${escapeHtml(automaticSource.resolved_document_name)}`);
+      if (automaticSource.refresh_interval_seconds) lines.push(`Atualizacao: a cada ${escapeHtml(automaticSource.refresh_interval_seconds)}s`);
+      if (automaticSource.last_refreshed_at) lines.push(`Ultima atualizacao: ${escapeHtml(humanDate(automaticSource.last_refreshed_at))}`);
+      if (automaticSource.last_refresh_error) lines.push(`Atencao: ${escapeHtml(automaticSource.last_refresh_error)}`);
       els.automaticSourceSummary.innerHTML = lines.join("<br/>");
     }
 
@@ -967,7 +1040,7 @@ FRONTEND_HTML = """
       if (!selectedSummary || (selectedSummary.mode || "manual") !== state.activeMode) {
         state.selectedSlug = null;
         els.selectionPill.textContent = "Nenhuma area selecionada";
-        els.areaJson.textContent = "Selecione uma area para visualizar os polygons.";
+        els.areaJson.textContent = "Selecione uma area para visualizar os detalhes.";
       }
     }
 
@@ -1013,14 +1086,16 @@ FRONTEND_HTML = """
         return;
       }
 
-      els.body.innerHTML = visibleAreas.map((area) => {
+      const groupedAreas = groupAreasByAgency(visibleAreas);
+      els.body.innerHTML = groupedAreas.map((group) => {
+        const groupRows = group.areas.map((area) => {
         const color = normalizeColor(area.color, area.slug);
         const refreshText = area.mode === "automatic"
           ? (area.last_refresh_error ? `Erro: ${escapeHtml(area.last_refresh_error)}` : escapeHtml(humanDate(area.last_refreshed_at)))
           : "-";
         const badgeClass = area.mode === "automatic" ? "automatic" : "manual";
         const refreshButton = area.mode === "automatic" && area.automatic_source_type === "network_link"
-          ? `<button class="warning" onclick="refreshAutomaticArea('${area.slug}')">Atualizar</button>`
+          ? `<button class="warning" onclick="refreshAutomaticArea('${area.slug}')">↻ Atualizar</button>`
           : "";
 
         return `
@@ -1051,14 +1126,27 @@ FRONTEND_HTML = """
             <td class="mini">${refreshText}</td>
             <td>
               <div class="row-actions">
-                <button onclick="viewArea('${area.slug}')">Ver</button>
-                <button onclick="focusAreaOnMap('${area.slug}')">Mapa</button>
-                <button onclick="editArea('${area.slug}')">Editar</button>
+                <button onclick="viewArea('${area.slug}')">◉ Ver</button>
+                <button onclick="focusAreaOnMap('${area.slug}')">⌖ Mapa</button>
+                <button onclick="editArea('${area.slug}')">✎ Editar</button>
                 ${refreshButton}
-                <button class="danger" onclick="deleteArea('${area.slug}')">Excluir</button>
+                <button class="danger" onclick="deleteArea('${area.slug}')">× Excluir</button>
               </div>
             </td>
           </tr>
+        `;
+        }).join("");
+
+        return `
+          <tr class="agency-group-row">
+            <td colspan="7">
+              <div class="agency-group">
+                <strong><span class="nav-icon">⌂</span>${escapeHtml(group.agency)}</strong>
+                <span class="agency-count">${group.areas.length} area(s)</span>
+              </div>
+            </td>
+          </tr>
+          ${groupRows}
         `;
       }).join("");
     }
