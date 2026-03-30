@@ -4,7 +4,7 @@ Entrypoint Vercel - expoe a variavel `app` (FastAPI/ASGI).
 
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -703,13 +703,20 @@ async def _read_upload(file: UploadFile) -> tuple[bytes, str]:
     return content, file_name
 
 
+def _set_no_store_headers(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def frontend():
+def frontend(response: Response):
+    _set_no_store_headers(response)
     return FRONTEND_HTML
 
 
@@ -729,7 +736,8 @@ def post_analyze(request: AnalysisRequest):
     summary="Lista todas as areas cadastradas",
     tags=["Areas"],
 )
-def list_areas():
+def list_areas(response: Response):
+    _set_no_store_headers(response)
     return repository.list_all()
 
 
@@ -738,7 +746,8 @@ def list_areas():
     summary="Retorna detalhes de uma area",
     tags=["Areas"],
 )
-def get_area(slug: str):
+def get_area(slug: str, response: Response):
+    _set_no_store_headers(response)
     data = repository.get_raw(slug)
     if data is None:
         raise HTTPException(404, f"Area '{slug}' nao encontrada.")

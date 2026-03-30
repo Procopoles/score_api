@@ -817,6 +817,17 @@ FRONTEND_HTML = """
       return "Falha ao processar a requisicao.";
     }
 
+    async function apiGet(url) {
+      return fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+          "Pragma": "no-cache",
+        },
+      });
+    }
+
     function removePreviewLayer() {
       if (state.previewLayer) {
         map.removeLayer(state.previewLayer);
@@ -961,7 +972,7 @@ FRONTEND_HTML = """
     }
 
     async function getAreaDetails(slug) {
-      const res = await fetch(`${apiBase}/${slug}`);
+      const res = await apiGet(`${apiBase}/${slug}`);
       if (!res.ok) throw new Error(`Falha ao carregar area ${slug}.`);
       return res.json();
     }
@@ -1056,7 +1067,7 @@ FRONTEND_HTML = """
       const { silent = false, preserveStatus = false } = options;
 
       try {
-        const res = await fetch(apiBase);
+        const res = await apiGet(apiBase);
         if (!res.ok) throw new Error("Falha ao carregar areas.");
         state.areas = await res.json();
         resetSelectionIfHidden();

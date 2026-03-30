@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from copy import deepcopy
 from threading import RLock
 from typing import Optional
@@ -17,6 +18,7 @@ MINIO_OBJECT_KEY = os.getenv("MINIO_OBJECT_KEY", "areas/areas.json")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 MINIO_REGION = os.getenv("MINIO_REGION", "us-east-1")
+CACHE_SYNC_INTERVAL_SECONDS = float(os.getenv("AREAS_CACHE_SYNC_INTERVAL_SECONDS", "2"))
 
 
 def _color_from_slug(slug: str) -> str:
@@ -74,6 +76,8 @@ class AreasRepository:
         self._areas_data: dict[str, dict] = {}
         self._geometries: dict[str, MultiPolygon] = {}
         self._loaded = False
+        self._object_etag: Optional[str] = None
+        self._last_sync_check_monotonic = 0.0
         self._lock = RLock()
         self._s3 = self._build_s3_client()
 
@@ -92,32 +96,46 @@ class AreasRepository:
             region_name=MINIO_REGION,
         )
 
-    def _download_raw_areas(self) -> dict:
+    def _download_raw_areas(self) -> tuple[dict, Optional[str]]:
         try:
             response = self._s3.get_object(Bucket=MINIO_BUCKET, Key=MINIO_OBJECT_KEY)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             if code in {"NoSuchKey", "404"}:
-                return {}
+                return {}, None
             raise
 
+        object_etag = str(response.get("ETag", "")).strip('"') or None
         body = response["Body"].read()
         if not body or not body.strip():
-            return {}
+            return {}, object_etag
 
         data = json.loads(body.decode("utf-8-sig"))
         if not isinstance(data, dict):
             raise ValueError("Conteudo do arquivo de areas no MinIO deve ser um objeto JSON.")
-        return data
+        return data, object_etag
+
+    def _get_remote_object_etag(self) -> Optional[str]:
+        try:
+            response = self._s3.head_object(Bucket=MINIO_BUCKET, Key=MINIO_OBJECT_KEY)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in {"NoSuchKey", "404"}:
+                return None
+            raise
+
+        return str(response.get("ETag", "")).strip('"') or None
 
     def _upload_raw_areas(self) -> None:
         payload = json.dumps(self._areas_data, ensure_ascii=False, indent=2).encode("utf-8")
-        self._s3.put_object(
+        response = self._s3.put_object(
             Bucket=MINIO_BUCKET,
             Key=MINIO_OBJECT_KEY,
             Body=payload,
             ContentType="application/json; charset=utf-8",
         )
+        self._object_etag = str(response.get("ETag", "")).strip('"') or None
+        self._last_sync_check_monotonic = time.monotonic()
 
     @staticmethod
     def _normalize_area_record(area_dict: dict, slug_hint: Optional[str] = None) -> dict:
@@ -141,22 +159,49 @@ class AreasRepository:
         normalized["automatic_source"] = automatic_source
         return normalized
 
-    def _hydrate_from_raw(self, raw: dict) -> None:
+    def _hydrate_from_raw(self, raw: dict, object_etag: Optional[str] = None) -> None:
         self._areas_data = {}
         self._geometries = {}
         for slug, area_dict in raw.items():
             normalized = self._normalize_area_record(area_dict, slug)
             self._areas_data[normalized["slug"]] = normalized
             self._geometries[normalized["slug"]] = self._build_geometry(normalized["polygons"])
+        self._object_etag = object_etag
 
-    def _ensure_loaded(self) -> None:
+    def _reload_from_storage_locked(self) -> None:
+        raw, object_etag = self._download_raw_areas()
+        self._hydrate_from_raw(raw, object_etag)
+        self._loaded = True
+        self._last_sync_check_monotonic = time.monotonic()
+
+    def _sync_with_remote_if_needed_locked(self, force: bool = False) -> None:
+        if not self._loaded:
+            self._reload_from_storage_locked()
+            return
+
+        now = time.monotonic()
+        if not force and now - self._last_sync_check_monotonic < CACHE_SYNC_INTERVAL_SECONDS:
+            return
+
+        remote_etag = self._get_remote_object_etag()
+        self._last_sync_check_monotonic = now
+        if remote_etag == self._object_etag:
+            return
+
+        self._reload_from_storage_locked()
+
+    def _ensure_loaded(
+        self,
+        check_remote: bool = False,
+        force_remote_check: bool = False,
+    ) -> None:
         with self._lock:
-            if self._loaded:
+            if not self._loaded:
+                self._reload_from_storage_locked()
                 return
 
-            raw = self._download_raw_areas()
-            self._hydrate_from_raw(raw)
-            self._loaded = True
+            if check_remote:
+                self._sync_with_remote_if_needed_locked(force=force_remote_check)
 
     @staticmethod
     def _ring_to_xy(ring: list[list[float]]) -> list[tuple[float, float]]:
@@ -208,12 +253,12 @@ class AreasRepository:
 
     def refresh_area(self, slug: str, force: bool = False) -> Optional[dict]:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True)
             return self._refresh_area_locked(slug, force=force)
 
     def refresh_all_automatic_areas(self) -> None:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True)
             changed = False
             automatic_slugs = [
                 slug for slug, data in self._areas_data.items() if data.get("mode") == "automatic"
@@ -229,14 +274,14 @@ class AreasRepository:
 
     def upsert(self, area: AreaInput) -> None:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True, force_remote_check=True)
             area_dict = self._normalize_area_record(area.model_dump(), area.slug)
             self._apply_area_record(area_dict)
             self._upload_raw_areas()
 
     def patch(self, slug: str, changes: dict) -> Optional[dict]:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True, force_remote_check=True)
             current = self._areas_data.get(slug)
             if current is None:
                 return None
@@ -264,7 +309,7 @@ class AreasRepository:
 
     def delete(self, slug: str) -> bool:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True, force_remote_check=True)
             if slug not in self._areas_data:
                 return False
             del self._areas_data[slug]
@@ -274,18 +319,18 @@ class AreasRepository:
 
     def get_geometry(self, slug: str) -> Optional[MultiPolygon]:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True)
             self._refresh_area_locked(slug)
             return self._geometries.get(slug)
 
     def get_raw(self, slug: str) -> Optional[dict]:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True)
             return self._refresh_area_locked(slug)
 
     def find_slugs_by_agencias(self, agencias: list[str]) -> list[str]:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True)
             normalized = {agencia.strip().casefold() for agencia in agencias}
             return [
                 slug
@@ -295,7 +340,7 @@ class AreasRepository:
 
     def list_all(self) -> list[dict]:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True)
             automatic_slugs = [
                 slug for slug, data in self._areas_data.items() if data.get("mode") == "automatic"
             ]
@@ -331,7 +376,7 @@ class AreasRepository:
 
     def exists(self, slug: str) -> bool:
         with self._lock:
-            self._ensure_loaded()
+            self._ensure_loaded(check_remote=True)
             return slug in self._areas_data
 
 
